@@ -3,13 +3,13 @@
 import Image from "next/image";
 import { signInWithPopup } from "firebase/auth";
 import { useState } from "react";
-import { auth, googleProvider } from "@/lib/firebase/client";
+import { createGoogleProvider, getClientAuth } from "../../lib/firebase/client";
 
 export default function LoginPage() {
   const [error, setError] = useState("");
   const login = async () => {
     setError("");
-    try { await signInWithPopup(auth, googleProvider); window.location.assign("/panel"); }
+    try { await signInWithPopup(getClientAuth(), createGoogleProvider()); window.location.assign("/panel"); }
     catch { setError("No se pudo completar el acceso. Verificá la cuenta autorizada."); }
   };
 

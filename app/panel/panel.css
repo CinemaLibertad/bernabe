@@ -1,0 +1,38 @@
+.panel-main .metric-card,
+.panel-main .data-card {
+  border: 1px solid #9eb7d4;
+  box-shadow: inset 0 0 0 1px #e8f0fa;
+}
+
+.panel-main .metric-card {
+  min-height: 120px;
+}
+
+.panel-main .dashboard-grid {
+  align-items: stretch;
+}
+
+.panel-main .data-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 290px;
+  max-height: 390px;
+  overflow: hidden;
+}
+
+.panel-main .data-card.large {
+  min-height: 290px;
+}
+
+.panel-main .dashboard-scroll {
+  flex: 1;
+  min-height: 130px;
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid #aec4df;
+  box-shadow: inset 0 0 0 1px #edf3fa;
+}
+
+.panel-main .dashboard-empty {
+  min-height: 110px;
+}

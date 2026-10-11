@@ -1,0 +1,19 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAuthorizedStudio(studioId) {
+      return request.auth != null
+        && request.auth.token.email == 'sebastiancharpentier@gmail.com'
+        && request.auth.token.email_verified == true
+        && studioId == 'estudio-bernabe';
+    }
+
+    match /studios/{studioId}/agenda/{entryId}/{fileName} {
+      allow read: if isAuthorizedStudio(studioId);
+      allow create, update: if isAuthorizedStudio(studioId)
+        && request.resource.size < 20 * 1024 * 1024
+        && request.resource.contentType.matches('application/pdf|image/jpeg|image/png|image/webp');
+      allow delete: if isAuthorizedStudio(studioId);
+    }
+  }
+}

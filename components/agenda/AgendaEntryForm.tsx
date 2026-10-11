@@ -4,9 +4,13 @@ import { useState, type FormEvent } from "react";
 import { ENTRY_STATUSES, ENTRY_TYPES, PRIORITIES, type AgendaAttachment, type AgendaEntry, type AgendaEntryInput } from "../../lib/agenda/agenda.types";
 import { localDateTimeIso, localDateTimeValue } from "../../lib/agenda/calendar-date";
 import { normalizeReferences, validateAgendaEntry, validateAgendaFile } from "../../lib/agenda/agenda.service";
+import type { LegalCase } from "../../lib/cases/case.model";
+import type { Client } from "../../lib/clients/client.model";
 
 type Props = {
   entry: AgendaEntry | null;
+  cases: LegalCase[];
+  clients: Client[];
   initialDate: Date;
   busy: boolean;
   onClose: () => void;
@@ -19,7 +23,7 @@ const titleByType: Record<AgendaEntryInput["type"], string> = {
   recordatorio: "Recordatorio", nota: "Nota", otro: "Otro",
 };
 
-export function AgendaEntryForm({ entry, initialDate, busy, onClose, onSave, onDelete }: Props) {
+export function AgendaEntryForm({ entry, cases, clients, initialDate, busy, onClose, onSave, onDelete }: Props) {
   const initialStart = localDateTimeValue(entry?.startAt ?? initialDate);
   const initialEnd = entry?.endAt ? localDateTimeValue(entry.endAt) : "";
   const [type, setType] = useState<AgendaEntryInput["type"]>(entry?.type ?? "audiencia");
@@ -34,12 +38,13 @@ export function AgendaEntryForm({ entry, initialDate, busy, onClose, onSave, onD
   const [isHighlighted, setIsHighlighted] = useState(entry?.isHighlighted ?? false);
   const [priority, setPriority] = useState<AgendaEntryInput["priority"]>(entry?.priority ?? "normal");
   const [status, setStatus] = useState<AgendaEntryInput["status"]>(entry?.status ?? "pendiente");
-  const [caseId, setCaseId] = useState(entry?.caseId ?? "");
-  const [clientId, setClientId] = useState(entry?.clientId ?? "");
+  const [caseIds, setCaseIds] = useState<string[]>(entry?.caseIds ?? []);
+  const [clientIds, setClientIds] = useState<string[]>(entry?.clientIds ?? []);
   const [jurisdiction, setJurisdiction] = useState(entry?.jurisdiction ?? "");
   const [branch, setBranch] = useState(entry?.branch ?? "");
   const [location, setLocation] = useState(entry?.location ?? "");
-  const [judicialBody, setJudicialBody] = useState(entry?.judicialBody ?? "");
+  const [organization, setOrganization] = useState(entry?.organization ?? "");
+  const [dateVerification, setDateVerification] = useState<AgendaEntryInput["dateVerification"]>(entry?.dateVerification ?? (entry?.type === "vencimiento" ? "pendiente" : "no_aplica"));
   const [meetingUrl, setMeetingUrl] = useState(entry?.meetingUrl ?? "");
   const [references, setReferences] = useState((entry?.references ?? []).join("\n"));
   const [attachments, setAttachments] = useState<AgendaAttachment[]>(entry?.attachments ?? []);
@@ -68,11 +73,12 @@ export function AgendaEntryForm({ entry, initialDate, busy, onClose, onSave, onD
     const input: AgendaEntryInput = {
       type, title, description, notes, startAt, endAt,
       timeZone: entry?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
-      allDay, isHighlighted, priority, status, caseId: caseId.trim(), clientId: clientId.trim(),
-      jurisdiction: jurisdiction.trim(), branch: branch.trim(), location: location.trim(), judicialBody: judicialBody.trim(),
+      allDay, isHighlighted, priority, status,
+      caseIds: caseIds as AgendaEntryInput["caseIds"], clientIds: clientIds as AgendaEntryInput["clientIds"],
+      jurisdiction: jurisdiction.trim(), branch: branch.trim(), location: location.trim(), organization: organization.trim(),
       meetingUrl: meetingUrl.trim(), references: normalizeReferences(references), attachments,
       remindersMinutes: reminders.split(",").map((value) => Number(value.trim())).filter((value) => Number.isFinite(value) && value >= 0),
-      recurrence,
+      recurrence, dateVerification: type === "vencimiento" ? (dateVerification === "no_aplica" ? "pendiente" : dateVerification) : "no_aplica",
     };
     const validationError = validateAgendaEntry(input);
     if (validationError) { setError(validationError); return; }
@@ -87,7 +93,7 @@ export function AgendaEntryForm({ entry, initialDate, busy, onClose, onSave, onD
       <form onSubmit={(event) => void submit(event)}>
         <div className="agenda-form-scroll">
           <div className="agenda-form-section"><div className="agenda-field-grid">
-            <label>Tipo de actividad<select value={type} onChange={(event) => setType(event.target.value as AgendaEntryInput["type"])}>{ENTRY_TYPES.map((item) => <option key={item} value={item}>{titleByType[item]}</option>)}</select></label>
+            <label>Tipo de actividad<select value={type} onChange={(event) => { const nextType = event.target.value as AgendaEntryInput["type"]; setType(nextType); if (nextType === "vencimiento" && dateVerification === "no_aplica") setDateVerification("pendiente"); }}>{ENTRY_TYPES.map((item) => <option key={item} value={item}>{titleByType[item]}</option>)}</select></label>
             <label className="agenda-field-wide">Título<input required maxLength={180} value={title} onChange={(event) => setTitle(event.target.value)} autoFocus /></label>
             <label>Fecha de inicio<input type="date" required value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
             {!allDay && <label>Hora de inicio<input type="time" required value={startTime} onChange={(event) => setStartTime(event.target.value)} /></label>}
@@ -100,14 +106,15 @@ export function AgendaEntryForm({ entry, initialDate, busy, onClose, onSave, onD
           </div></div>
           <div className="agenda-form-section"><label>Descripción<textarea rows={3} maxLength={4000} value={description} onChange={(event) => setDescription(event.target.value)} /></label><label>Observaciones<textarea rows={2} value={notes} onChange={(event) => setNotes(event.target.value)} /></label></div>
           <details className="agenda-advanced"><summary>Vinculaciones y opciones avanzadas</summary>
-            <div className="agenda-form-section"><p className="agenda-form-note">Los vínculos con expedientes y clientes son opcionales y se guardan por ID. Sus selectores se conectarán cuando esos módulos tengan registros propios.</p>
+            <div className="agenda-form-section"><p className="agenda-form-note">Las asociaciones usan los registros existentes del estudio. También se puede guardar una actividad independiente.</p>
               <div className="agenda-field-grid">
-                <label>ID de expediente (opcional)<input value={caseId} onChange={(event) => setCaseId(event.target.value)} /></label>
-                <label>ID de cliente (opcional)<input value={clientId} onChange={(event) => setClientId(event.target.value)} /></label>
+                <label>Expedientes asociados (opcional)<select multiple value={caseIds} onChange={(event) => setCaseIds(Array.from(event.target.selectedOptions, (option) => option.value))}>{cases.map((item) => <option key={item.id} value={item.id}>{item.caption}{item.number ? ` · ${item.number}` : ""}</option>)}</select></label>
+                <label>Clientes asociados (opcional)<select multiple value={clientIds} onChange={(event) => setClientIds(Array.from(event.target.selectedOptions, (option) => option.value))}>{clients.map((item) => <option key={item.id} value={item.id}>{item.displayName}{item.identifier ? ` · ${item.identifier}` : ""}</option>)}</select></label>
                 <label>Jurisdicción<input value={jurisdiction} onChange={(event) => setJurisdiction(event.target.value)} /></label>
                 <label>Fuero / ámbito<input value={branch} onChange={(event) => setBranch(event.target.value)} /></label>
                 <label>Ubicación<input value={location} onChange={(event) => setLocation(event.target.value)} /></label>
-                <label>Organismo u organizador<input value={judicialBody} onChange={(event) => setJudicialBody(event.target.value)} /></label>
+                <label>Organismo u organizador<input value={organization} onChange={(event) => setOrganization(event.target.value)} /></label>
+                {type === "vencimiento" && <label>Verificación de fecha<select value={dateVerification} onChange={(event) => setDateVerification(event.target.value as AgendaEntryInput["dateVerification"])}><option value="pendiente">Pendiente de verificación</option><option value="verificada">Verificada por el profesional</option></select><small>El sistema no calcula ni valida plazos jurídicos.</small></label>}
                 <label className="agenda-field-wide">Enlace de reunión<input type="url" value={meetingUrl} onChange={(event) => setMeetingUrl(event.target.value)} /></label>
                 <label className="agenda-field-wide">Referencias (una por línea)<textarea rows={3} value={references} onChange={(event) => setReferences(event.target.value)} /></label>
                 <label className="agenda-field-wide">Documentos adjuntos<input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" multiple onChange={(event) => selectFiles(event.target.files)} /><small>PDF o imágenes, máximo 20 MB por archivo; acceso sujeto a las reglas de Storage.</small></label>

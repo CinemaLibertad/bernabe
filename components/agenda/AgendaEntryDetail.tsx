@@ -42,10 +42,10 @@ export function AgendaEntryDetail({ entry, history, historyLoading, busy, onClos
       <div className="agenda-detail-scroll">
         <dl className="agenda-detail-grid">
           <dt>Zona horaria</dt><dd>{entry.timeZone}</dd>
-          {entry.caseId && <><dt>Expediente asociado</dt><dd>{entry.caseId}</dd></>}
-          {entry.clientId && <><dt>Cliente asociado</dt><dd>{entry.clientId}</dd></>}
+          {entry.caseIds.length > 0 && <><dt>Expedientes asociados</dt><dd>{entry.caseIds.join(", ")}</dd></>}
+          {entry.clientIds.length > 0 && <><dt>Clientes asociados</dt><dd>{entry.clientIds.join(", ")}</dd></>}
           {entry.location && <><dt>Ubicación</dt><dd>{entry.location}</dd></>}
-          {entry.judicialBody && <><dt>Organismo</dt><dd>{entry.judicialBody}</dd></>}
+          {entry.organization && <><dt>Organismo u organizador</dt><dd>{entry.organization}</dd></>}
           {entry.meetingUrl && <><dt>Reunión</dt><dd><a href={entry.meetingUrl} target="_blank" rel="noreferrer">Abrir enlace</a></dd></>}
           {entry.description && <><dt>Descripción</dt><dd className="preserve-lines">{entry.description}</dd></>}
           {entry.notes && <><dt>Observaciones</dt><dd className="preserve-lines">{entry.notes}</dd></>}

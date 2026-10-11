@@ -19,6 +19,8 @@ const fromCase = (id: string, data: Record<string, unknown>): LegalCase => ({ ..
 const fromActivity = (id: string, data: Record<string, unknown>): Activity => ({ ...data, id, startAt: iso(data.startAt), endAt: data.endAt instanceof Timestamp ? iso(data.endAt) : null, createdAt: iso(data.createdAt), updatedAt: iso(data.updatedAt), deletedAt: data.deletedAt instanceof Timestamp ? iso(data.deletedAt) : null } as Activity);
 const toActivity = (input: ActivityInput) => ({ ...input, startAt: Timestamp.fromDate(new Date(input.startAt)), endAt: input.endAt ? Timestamp.fromDate(new Date(input.endAt)) : null });
 
+export function newActivityId(): string { return doc(activities).id; }
+
 export async function listClients(): Promise<Client[]> {
   const result = await getDocs(query(clients, orderBy("displayName")));
   return result.docs.map((item) => fromClient(item.id, item.data() as Record<string, unknown>)).filter((item) => !item.archivedAt);
@@ -65,7 +67,8 @@ export async function saveActivity(input: ActivityInput, user: User, id?: string
   const ref = id ? doc(activities, id) : doc(activities);
   await runTransaction(firestore, async (tx) => {
     const oldSnapshot = id ? await tx.get(ref) : null;
-    const old = oldSnapshot?.exists() ? fromActivity(ref.id, oldSnapshot.data() as Record<string, unknown>) : null;
+    const oldData = oldSnapshot?.exists() ? oldSnapshot.data() : null;
+    const old = oldData ? fromActivity(ref.id, oldData as Record<string, unknown>) : null;
     if (old && (old.studioId !== studio || old.deletedAt)) throw new Error("La actividad no existe o ya fue archivada.");
     const uniqueCaseIds = [...new Set(input.caseIds)];
     const uniqueClientIds = [...new Set(input.clientIds)];
@@ -74,7 +77,7 @@ export async function saveActivity(input: ActivityInput, user: User, id?: string
     if (linkedCases.some((item) => !item.exists() || item.data().studioId !== studio || item.data().archivedAt)) throw new Error("Uno o más expedientes no existen, están archivados o pertenecen a otro estudio.");
     const linkedClients = await Promise.all(uniqueClientIds.map((clientId) => tx.get(doc(clients, clientId))));
     if (linkedClients.some((item) => !item.exists() || item.data().studioId !== studio || item.data().archivedAt)) throw new Error("Uno o más clientes no existen, están archivados o pertenecen a otro estudio.");
-    tx.set(ref, { ...toActivity(input), studioId: studio, createdAt: old ? oldSnapshot!.data().createdAt : serverTimestamp(), createdBy: old ? oldSnapshot!.data().createdBy : actor(user), updatedAt: serverTimestamp(), updatedBy: actor(user), deletedAt: null });
+    tx.set(ref, { ...toActivity(input), studioId: studio, createdAt: oldData ? oldData.createdAt : serverTimestamp(), createdBy: oldData ? oldData.createdBy : actor(user), updatedAt: serverTimestamp(), updatedBy: actor(user), deletedAt: null });
     const changedFields = old ? (Object.keys(input) as Array<keyof ActivityInput>).filter((key) => JSON.stringify(old[key]) !== JSON.stringify(input[key])) : [];
     const history = doc(collection(ref, "history"));
     tx.set(history, { action: !old ? "created" : old.startAt !== input.startAt ? "rescheduled" : "updated", actor: actor(user), at: serverTimestamp(), ...(old ? { previousStartAt: old.startAt, nextStartAt: input.startAt, changedFields } : { nextStartAt: input.startAt }), reason });

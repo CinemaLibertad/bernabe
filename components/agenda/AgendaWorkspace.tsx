@@ -12,6 +12,9 @@ import { AgendaEntryDetail } from "./AgendaEntryDetail";
 import { AgendaEntryForm } from "./AgendaEntryForm";
 import { CalendarView as CalendarSurface } from "./CalendarView";
 import { QuickNoteForm } from "./QuickNoteForm";
+import { listClients, listCases } from "../../lib/firebase/domain-repositories";
+import type { Client } from "../../lib/clients/client.model";
+import type { LegalCase } from "../../lib/cases/case.model";
 
 type Props = { initialDate: string };
 type FilterType = EntryType | "";
@@ -41,10 +44,22 @@ export function AgendaWorkspace({ initialDate }: Props) {
   const [selected, setSelected] = useState<AgendaEntry | null>(null);
   const [history, setHistory] = useState<AgendaAudit[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [cases, setCases] = useState<LegalCase[]>([]);
 
   const range = useMemo(() => calendarRange(anchor, view), [anchor, view]);
   const fromKey = range.from.toISOString();
   const toKey = range.to.toISOString();
+
+  useEffect(() => {
+    let ignore = false;
+    void Promise.all([listClients(), listCases()]).then(([clientRows, caseRows]) => {
+      if (!ignore) { setClients(clientRows); setCases(caseRows); }
+    }).catch((failure: unknown) => {
+      if (!ignore) setError(failure instanceof Error ? failure.message : "No se pudieron cargar los registros relacionados.");
+    });
+    return () => { ignore = true; };
+  }, []);
 
   useEffect(() => {
     let ignore = false;
@@ -75,10 +90,12 @@ export function AgendaWorkspace({ initialDate }: Props) {
       if (from && time < from.getTime()) return false;
       if (to && time > to.getTime()) return false;
       if (!needle) return true;
-      const corpus = [entry.title, entry.description, entry.notes, entry.caseId, entry.clientId, entry.jurisdiction, entry.branch, entry.judicialBody, entry.location, ...entry.references].join(" ").toLocaleLowerCase("es-AR");
+      const relatedCases = entry.caseIds.map((id) => cases.find((item) => item.id === id)?.caption ?? id);
+      const relatedClients = entry.clientIds.map((id) => clients.find((item) => item.id === id)?.displayName ?? id);
+      const corpus = [entry.title, entry.description, entry.notes, ...relatedCases, ...relatedClients, entry.jurisdiction, entry.branch, entry.organization, entry.location, ...entry.references].join(" ").toLocaleLowerCase("es-AR");
       return corpus.includes(needle);
     });
-  }, [entries, search, filterType, filterStatus, filterFrom, filterTo]);
+  }, [entries, search, filterType, filterStatus, filterFrom, filterTo, cases, clients]);
 
   const now = new Date();
   const today = dateKey(now);
@@ -101,7 +118,8 @@ export function AgendaWorkspace({ initialDate }: Props) {
     setHistory([]);
     setHistoryLoading(true);
     void listAgendaHistory(entry.id).then(setHistory).catch((failure: unknown) => {
-      setHistory([{ action: "updated", actor: "", at: "", reason: failure instanceof Error ? `No se pudo cargar el historial: ${failure.message}` : "No se pudo cargar el historial." }]);
+      setHistory([]);
+      setError(failure instanceof Error ? `No se pudo cargar el historial: ${failure.message}` : "No se pudo cargar el historial.");
     }).finally(() => setHistoryLoading(false));
   }
   function openEdit(entry: AgendaEntry) {
@@ -144,8 +162,8 @@ export function AgendaWorkspace({ initialDate }: Props) {
     const input: AgendaEntryInput = {
       type: "nota", title, description: text, notes: "", startAt: current.toISOString(), endAt: null,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, allDay: false, isHighlighted: false,
-      priority: "normal", status: "pendiente", caseId: "", clientId: "", jurisdiction: "", branch: "", location: "", judicialBody: "", meetingUrl: "",
-      references: [], attachments: [], remindersMinutes: [], recurrence: null,
+      priority: "normal", status: "pendiente", caseIds: [], clientIds: [], jurisdiction: "", branch: "", location: "", organization: "", meetingUrl: "",
+      references: [], attachments: [], remindersMinutes: [], recurrence: null, dateVerification: "no_aplica",
     };
     const validationError = validateAgendaEntry(input);
     if (validationError) throw new Error(validationError);
@@ -203,7 +221,7 @@ export function AgendaWorkspace({ initialDate }: Props) {
   }
 
   function duplicateEntry(entry: AgendaEntry) {
-    const copy = { ...entry, id: "", title: `Copia de ${entry.title}`, status: "pendiente" as EntryStatus, createdAt: "", updatedAt: "", createdBy: "", updatedBy: "", deletedAt: null };
+    const copy = { ...entry, title: `Copia de ${entry.title}`, status: "pendiente" as EntryStatus };
     setFormEntry(copy);
     setFormIsNew(true);
     setInitialEntryDate(new Date(copy.startAt));
@@ -213,7 +231,7 @@ export function AgendaWorkspace({ initialDate }: Props) {
 
   function exportCsv() {
     const escape = (value: string) => `"${value.replaceAll('"', '""')}"`;
-    const rows = [["Inicio", "Título", "Tipo", "Estado", "Prioridad", "Expediente", "Cliente", "Jurisdicción", "Fuero", "Organismo", "Ubicación"], ...filteredEntries.map((entry) => [entry.startAt, entry.title, activityLabels[entry.type], entry.status, entry.priority, entry.caseId, entry.clientId, entry.jurisdiction, entry.branch, entry.judicialBody, entry.location])];
+    const rows = [["Inicio", "Título", "Tipo", "Estado", "Prioridad", "Expedientes", "Clientes", "Jurisdicción", "Fuero", "Organismo u organizador", "Ubicación"], ...filteredEntries.map((entry) => [entry.startAt, entry.title, activityLabels[entry.type], entry.status, entry.priority, entry.caseIds.map((id) => cases.find((item) => item.id === id)?.caption ?? id).join("; "), entry.clientIds.map((id) => clients.find((item) => item.id === id)?.displayName ?? id).join("; "), entry.jurisdiction, entry.branch, entry.organization, entry.location])];
     const blob = new Blob(["\uFEFF" + rows.map((row) => row.map((value) => escape(String(value))).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -238,12 +256,12 @@ export function AgendaWorkspace({ initialDate }: Props) {
       {loading ? <div className="agenda-loading">Consultando agenda…</div> : view === "list" ? <div className="agenda-list-hint">La vista de lista está disponible en el listado consultable inferior.</div> : <CalendarSurface entries={filteredEntries} anchor={anchor} view={view} onCreate={openNew} onOpen={openDetails} />}
     </section><aside className="agenda-side-panel">
       <section className="agenda-side-card"><div className="agenda-side-heading"><h2>Próximas actividades</h2><span>{upcoming.length}</span></div>{upcoming.length ? upcoming.map((entry) => <button type="button" className="agenda-side-item" key={entry.id} onClick={() => openDetails(entry)}><time>{new Intl.DateTimeFormat("es-AR", { weekday: "short", day: "numeric", month: "short", hour: entry.allDay ? undefined : "2-digit", minute: entry.allDay ? undefined : "2-digit" }).format(new Date(entry.startAt))}</time><strong>{entry.title}</strong><small>{activityLabels[entry.type]}</small></button>) : <p className="agenda-empty-copy">No hay actividades próximas cargadas en este período.</p>}</section>
-      <section className="agenda-side-card"><div className="agenda-side-heading"><h2>Fechas de vencimientos</h2><span>{deadlines.length}</span></div>{deadlines.length ? deadlines.slice(0, 6).map((entry) => <button type="button" className={`agenda-side-item${passedDates.includes(entry) ? " is-past-date" : ""}`} key={entry.id} onClick={() => openDetails(entry)}><time>{new Intl.DateTimeFormat("es-AR", { dateStyle: "medium", ...(entry.allDay ? {} : { timeStyle: "short" }) }).format(new Date(entry.startAt))}{passedDates.includes(entry) && " · fecha transcurrida"}</time><strong>{entry.title}</strong><small>{entry.judicialBody || entry.caseId || "Sin referencia asociada"}</small></button>) : <p className="agenda-empty-copy">No hay vencimientos registrados en este período.</p>}</section>
+      <section className="agenda-side-card"><div className="agenda-side-heading"><h2>Fechas de vencimientos</h2><span>{deadlines.length}</span></div>{deadlines.length ? deadlines.slice(0, 6).map((entry) => <button type="button" className={`agenda-side-item${passedDates.includes(entry) ? " is-past-date" : ""}`} key={entry.id} onClick={() => openDetails(entry)}><time>{new Intl.DateTimeFormat("es-AR", { dateStyle: "medium", ...(entry.allDay ? {} : { timeStyle: "short" }) }).format(new Date(entry.startAt))}{passedDates.includes(entry) && " · fecha transcurrida"}</time><strong>{entry.title}</strong><small>{entry.organization || entry.caseIds.map((id) => cases.find((item) => item.id === id)?.caption ?? id).join(", ") || "Sin referencia asociada"}</small></button>) : <p className="agenda-empty-copy">No hay vencimientos registrados en este período.</p>}</section>
       <section className="agenda-side-card"><div className="agenda-side-heading"><h2>Destacadas y urgentes</h2><span>{highlighted.length}</span></div>{highlighted.length ? highlighted.slice(0, 6).map((entry) => <button type="button" className="agenda-side-item" key={entry.id} onClick={() => openDetails(entry)}><time>{entry.priority} · {new Intl.DateTimeFormat("es-AR", { dateStyle: "medium" }).format(new Date(entry.startAt))}</time><strong>{entry.title}</strong><small>{activityLabels[entry.type]}</small></button>) : <p className="agenda-empty-copy">Todavía no hay entradas destacadas.</p>}</section>
       <section className="agenda-side-card"><div className="agenda-side-heading"><h2>Alertas de fechas</h2></div>{passedDates.length ? passedDates.map((entry) => <button type="button" className="agenda-side-item is-past-date" key={entry.id} onClick={() => openDetails(entry)}><strong>{entry.title}</strong><small>La fecha registrada ya transcurrió; verificá el estado y los antecedentes.</small></button>) : <p className="agenda-empty-copy">No hay fechas registradas ya transcurridas en este período.</p>}</section>
     </aside></div>
     <section className="agenda-records-panel" id="agenda-records"><header><div><span className="agenda-eyebrow">CONSULTA E HISTORIAL</span><h2>Listado de actividades registradas</h2></div></header><div className="agenda-filters"><label className="agenda-search-field">Buscar<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Título, texto, expediente, cliente, referencia…" /></label><label>Tipo<select value={filterType} onChange={(event) => setFilterType(event.target.value as FilterType)}><option value="">Todos</option>{Object.entries(activityLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Estado<select value={filterStatus} onChange={(event) => setFilterStatus(event.target.value as FilterStatus)}><option value="">Todos</option>{["pendiente", "confirmado", "realizado", "postergado", "cancelado"].map((item) => <option key={item} value={item}>{item}</option>)}</select></label><label>Desde<input type="date" value={filterFrom} onChange={(event) => setFilterFrom(event.target.value)} /></label><label>Hasta<input type="date" value={filterTo} onChange={(event) => setFilterTo(event.target.value)} /></label><label className="agenda-filter-check"><input type="checkbox" checked={includeArchived} onChange={(event) => setIncludeArchived(event.target.checked)} /> Incluir archivadas</label></div><CalendarSurface entries={filteredEntries} anchor={anchor} view="list" onCreate={openNew} onOpen={openDetails} /></section>
-    {formOpen && <AgendaEntryForm key={formEntry?.id || (formIsNew ? "new" : "edit")} entry={formEntry} initialDate={initialEntryDate} busy={busy} onClose={() => setFormOpen(false)} onSave={saveEntry} onDelete={formIsNew ? undefined : deleteEntry} />}
+    {formOpen && <AgendaEntryForm key={formEntry?.id || (formIsNew ? "new" : "edit")} entry={formEntry} cases={cases} clients={clients} initialDate={initialEntryDate} busy={busy} onClose={() => setFormOpen(false)} onSave={saveEntry} onDelete={formIsNew ? undefined : deleteEntry} />}
     {quickNoteOpen && <QuickNoteForm busy={busy} onClose={() => setQuickNoteOpen(false)} onSave={saveQuickNote} />}
     {selected && <AgendaEntryDetail entry={selected} history={history} historyLoading={historyLoading} busy={busy} onClose={() => setSelected(null)} onEdit={() => openEdit(selected)} onDuplicate={() => duplicateEntry(selected)} onCancel={() => void cancelEntry(selected)} onDelete={() => void deleteEntry(selected)} onConvertToTask={() => void convertNoteToTask(selected)} />}
   </main>;

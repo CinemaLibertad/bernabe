@@ -4,7 +4,7 @@ import { STUDIO_ID, type AgendaAttachment } from "./agenda.types";
 
 export async function uploadAgendaFile(entryId: string, file: File): Promise<AgendaAttachment> {
   const safeName = file.name.replace(/[^\w.-]/g, "_");
-  const path = `studios/${STUDIO_ID}/agenda/${entryId}/${crypto.randomUUID()}-${safeName}`;
+  const path = `studios/${STUDIO_ID}/activities/${entryId}/${crypto.randomUUID()}-${safeName}`;
   const fileRef = ref(fileStorage, path);
   await uploadBytes(fileRef, file, { contentType: file.type });
   return { name: file.name, path, contentType: file.type, size: file.size };

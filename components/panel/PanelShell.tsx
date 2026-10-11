@@ -8,7 +8,7 @@ import { getClientAuth } from "../../lib/firebase/client";
 
 const menu = [
   ["GENERAL", [["▦", "Dashboard", "/panel"], ["□", "Agenda y calendario", "/panel/agenda"], ["◷", "Tareas y vencimientos", "/panel/tareas"], ["♧", "Notificaciones", "/panel/notificaciones"]]],
-  ["GESTIÓN JURÍDICA", [["♙", "Clientes", "/panel/clientes"], ["▣", "Expedientes", "/panel/expedientes"], ["◷", "Actividad de tribunales", "/panel/actividad-tribunales"], ["⚖", "Juicios y actuaciones", "/panel/juicios-actuaciones"], ["▤", "Organismos judiciales", "/panel/organismos"], ["▥", "Fallos y jurisprudencia", "#"]]],
+  ["GESTIÓN JURÍDICA", [["♙", "Clientes", "/panel/clientes"], ["▣", "Expedientes", "/panel/expedientes"], ["◷", "Actividad de tribunales", "/panel/actividad-tribunales"], ["⚖", "Juicios y actuaciones", "/panel/juicios-actuaciones"], ["▤", "Organismos judiciales", "/panel/organismos"], ["▥", "Fallos y jurisprudencia", "/panel/jurisprudencia"]]],
   ["DOCUMENTACIÓN", [["▧", "Biblioteca documental", "#"], ["⌑", "Escáner y digitalización", "#"], ["◌", "Archivos pendientes", "#"]]],
   ["ADMINISTRACIÓN", [["$", "Finanzas", "#"], ["✉", "Consultas recibidas", "#"], ["⌁", "Informes y estadísticas", "#"]]],
   ["PREFERENCIAS", [["⚙", "Configuración", "/panel/configuracion"]]],

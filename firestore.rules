@@ -200,5 +200,91 @@ service cloud.firestore {
         allow update, delete: if false;
       }
     }
+    match /studios/{studioId}/legalDrafts/{draftId} {
+      allow read: if authorized(studioId);
+      allow create: if authorized(studioId)
+        && request.resource.data.studioId == studioId
+        && request.resource.data.createdBy == request.auth.token.email
+        && request.resource.data.updatedBy == request.auth.token.email
+        && request.resource.data.revision == 1
+        && request.resource.data.title is string
+        && request.resource.data.content is map
+        && (request.resource.data.caseId == null || validCaseLink(studioId, request.resource.data.caseId));
+      allow update: if authorized(studioId)
+        && resource.data.studioId == studioId
+        && request.resource.data.studioId == studioId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.updatedBy == request.auth.token.email
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.title is string
+        && request.resource.data.content is map
+        && (request.resource.data.caseId == null || validCaseLink(studioId, request.resource.data.caseId))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'content', 'caseId', 'revision', 'updatedAt', 'updatedBy']);
+      allow delete: if false;
+      match /versions/{versionId} {
+        allow read: if authorized(studioId)
+          && exists(/databases/$(database)/documents/studios/$(studioId)/legalDrafts/$(draftId));
+        allow create: if authorized(studioId)
+          && exists(/databases/$(database)/documents/studios/$(studioId)/legalDrafts/$(draftId))
+          && get(/databases/$(database)/documents/studios/$(studioId)/legalDrafts/$(draftId)).data.studioId == studioId
+          && request.resource.data.draftId == draftId
+          && request.resource.data.registeredBy == request.auth.token.email
+          && request.resource.data.revision == get(/databases/$(database)/documents/studios/$(studioId)/legalDrafts/$(draftId)).data.revision
+          && request.resource.data.content is map;
+        allow update, delete: if false;
+      }
+    }
+    match /studios/{studioId}/legalWorks/{workId} {
+      allow read: if authorized(studioId);
+      allow create: if authorized(studioId)
+        && request.resource.data.studioId == studioId
+        && request.resource.data.createdBy == request.auth.token.email
+        && request.resource.data.provider == 'juridica-multisource'
+        && request.resource.data.providerDocumentId is string;
+      allow update, delete: if false;
+    }
+    match /studios/{studioId}/legalCitations/{citationId} {
+      allow read: if authorized(studioId);
+      allow create: if authorized(studioId)
+        && request.resource.data.studioId == studioId
+        && request.resource.data.createdBy == request.auth.token.email
+        && request.resource.data.provider == 'juridica-multisource'
+        && request.resource.data.workId is string
+        && request.resource.data.providerDocumentId is string
+        && request.resource.data.excerpt is string
+        && request.resource.data.verificationStatus == 'pending';
+      allow update: if authorized(studioId)
+        && resource.data.studioId == studioId
+        && request.resource.data.studioId == studioId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.workId == resource.data.workId
+        && request.resource.data.providerDocumentId == resource.data.providerDocumentId
+        && request.resource.data.source == resource.data.source
+        && request.resource.data.sourceTitle == resource.data.sourceTitle
+        && request.resource.data.caption == resource.data.caption
+        && request.resource.data.court == resource.data.court
+        && request.resource.data.decisionDate == resource.data.decisionDate
+        && request.resource.data.jurisdiction == resource.data.jurisdiction
+        && request.resource.data.officialUrl == resource.data.officialUrl
+        && request.resource.data.excerpt == resource.data.excerpt
+        && resource.data.verificationStatus == 'pending'
+        && request.resource.data.verificationStatus == 'verified'
+        && request.resource.data.verifiedBy == request.auth.token.email
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['verificationStatus', 'verifiedAt', 'verifiedBy']);
+      allow delete: if false;
+    }
+    match /studios/{studioId}/legalAnnotations/{annotationId} {
+      allow read: if authorized(studioId);
+      allow create: if authorized(studioId)
+        && request.resource.data.studioId == studioId
+        && request.resource.data.createdBy == request.auth.token.email
+        && request.resource.data.provider == 'juridica-multisource'
+        && request.resource.data.providerDocumentId is string
+        && request.resource.data.excerpt is string
+        && request.resource.data.note is string;
+      allow update, delete: if false;
+    }
   }
 }

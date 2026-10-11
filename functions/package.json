@@ -1,0 +1,11 @@
+{
+  "name": "bernabe-jurisprudence-functions",
+  "private": true,
+  "main": "src/index.js",
+  "engines": {
+    "node": "22"
+  },
+  "dependencies": {
+    "firebase-functions": "6.6.0"
+  }
+}

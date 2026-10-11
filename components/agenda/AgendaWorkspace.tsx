@@ -15,14 +15,15 @@ import { QuickNoteForm } from "./QuickNoteForm";
 import { listClients, listCases } from "../../lib/firebase/domain-repositories";
 import type { Client } from "../../lib/clients/client.model";
 import type { LegalCase } from "../../lib/cases/case.model";
+import { getActivity } from "../../lib/firebase/domain-repositories";
 
-type Props = { initialDate: string };
+type Props = { initialDate: string; requestedActivityId?: string; requestedType?: string };
 type FilterType = EntryType | "";
 type FilterStatus = EntryStatus | "";
 const viewLabels: Record<CalendarView, string> = { month: "Mes", week: "Semana", day: "Día", list: "Lista" };
 const activityLabels: Record<EntryType, string> = { audiencia: "Audiencia", vencimiento: "Vencimiento", reunion: "Reunión", tarea: "Tarea", recordatorio: "Recordatorio", nota: "Nota", otro: "Otro" };
 
-export function AgendaWorkspace({ initialDate }: Props) {
+export function AgendaWorkspace({ initialDate, requestedActivityId = "", requestedType = "" }: Props) {
   const [anchor, setAnchor] = useState(() => new Date(initialDate));
   const [view, setView] = useState<CalendarView>("month");
   const [entries, setEntries] = useState<AgendaEntry[]>([]);
@@ -46,6 +47,7 @@ export function AgendaWorkspace({ initialDate }: Props) {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [cases, setCases] = useState<LegalCase[]>([]);
+  const [formInitialType, setFormInitialType] = useState<EntryType>("audiencia");
 
   const range = useMemo(() => calendarRange(anchor, view), [anchor, view]);
   const fromKey = range.from.toISOString();
@@ -106,9 +108,10 @@ export function AgendaWorkspace({ initialDate }: Props) {
   const highlighted = activeEntries.filter((entry) => entry.isHighlighted || entry.priority === "urgente").sort((a, b) => a.startAt.localeCompare(b.startAt));
 
   function reload() { setReloadKey((key) => key + 1); }
-  function openNew(date = new Date()) {
+  function openNew(date = new Date(), type: EntryType = "audiencia") {
     setInitialEntryDate(date);
     setFormEntry(null);
+    setFormInitialType(type);
     setFormIsNew(true);
     setSelected(null);
     setFormOpen(true);
@@ -124,11 +127,38 @@ export function AgendaWorkspace({ initialDate }: Props) {
   }
   function openEdit(entry: AgendaEntry) {
     setFormEntry(entry);
+    setFormInitialType(entry.type);
     setFormIsNew(false);
     setInitialEntryDate(new Date(entry.startAt));
     setSelected(null);
     setFormOpen(true);
   }
+
+  useEffect(() => {
+    if (requestedType !== "tarea" && requestedType !== "vencimiento") return;
+    setInitialEntryDate(new Date());
+    setFormEntry(null);
+    setFormInitialType(requestedType);
+    setFormIsNew(true);
+    setSelected(null);
+    setFormOpen(true);
+  }, [requestedType]);
+
+  useEffect(() => {
+    if (!requestedActivityId) return;
+    let ignore = false;
+    void getActivity(requestedActivityId).then(async (entry) => {
+      if (ignore || !entry) return;
+      setSelected(entry);
+      setHistoryLoading(true);
+      try { setHistory(await listAgendaHistory(entry.id)); }
+      catch (failure) { setHistory([]); setError(failure instanceof Error ? failure.message : "No se pudo cargar el historial."); }
+      finally { if (!ignore) setHistoryLoading(false); }
+    }).catch((failure: unknown) => {
+      if (!ignore) setError(failure instanceof Error ? failure.message : "No se pudo abrir la actividad solicitada.");
+    });
+    return () => { ignore = true; };
+  }, [requestedActivityId]);
 
   async function saveEntry(input: AgendaEntryInput, files: File[], reason: string) {
     const user = getClientAuth().currentUser;
@@ -261,7 +291,7 @@ export function AgendaWorkspace({ initialDate }: Props) {
       <section className="agenda-side-card"><div className="agenda-side-heading"><h2>Alertas de fechas</h2></div>{passedDates.length ? passedDates.map((entry) => <button type="button" className="agenda-side-item is-past-date" key={entry.id} onClick={() => openDetails(entry)}><strong>{entry.title}</strong><small>La fecha registrada ya transcurrió; verificá el estado y los antecedentes.</small></button>) : <p className="agenda-empty-copy">No hay fechas registradas ya transcurridas en este período.</p>}</section>
     </aside></div>
     <section className="agenda-records-panel" id="agenda-records"><header><div><span className="agenda-eyebrow">CONSULTA E HISTORIAL</span><h2>Listado de actividades registradas</h2></div></header><div className="agenda-filters"><label className="agenda-search-field">Buscar<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Título, texto, expediente, cliente, referencia…" /></label><label>Tipo<select value={filterType} onChange={(event) => setFilterType(event.target.value as FilterType)}><option value="">Todos</option>{Object.entries(activityLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Estado<select value={filterStatus} onChange={(event) => setFilterStatus(event.target.value as FilterStatus)}><option value="">Todos</option>{["pendiente", "confirmado", "realizado", "postergado", "cancelado"].map((item) => <option key={item} value={item}>{item}</option>)}</select></label><label>Desde<input type="date" value={filterFrom} onChange={(event) => setFilterFrom(event.target.value)} /></label><label>Hasta<input type="date" value={filterTo} onChange={(event) => setFilterTo(event.target.value)} /></label><label className="agenda-filter-check"><input type="checkbox" checked={includeArchived} onChange={(event) => setIncludeArchived(event.target.checked)} /> Incluir archivadas</label></div><CalendarSurface entries={filteredEntries} anchor={anchor} view="list" onCreate={openNew} onOpen={openDetails} /></section>
-    {formOpen && <AgendaEntryForm key={formEntry?.id || (formIsNew ? "new" : "edit")} entry={formEntry} cases={cases} clients={clients} initialDate={initialEntryDate} busy={busy} onClose={() => setFormOpen(false)} onSave={saveEntry} onDelete={formIsNew ? undefined : deleteEntry} />}
+    {formOpen && <AgendaEntryForm key={formEntry?.id || `${formIsNew ? "new" : "edit"}-${formInitialType}`} entry={formEntry} initialType={formInitialType} cases={cases} clients={clients} initialDate={initialEntryDate} busy={busy} onClose={() => setFormOpen(false)} onSave={saveEntry} onDelete={formIsNew ? undefined : deleteEntry} />}
     {quickNoteOpen && <QuickNoteForm busy={busy} onClose={() => setQuickNoteOpen(false)} onSave={saveQuickNote} />}
     {selected && <AgendaEntryDetail entry={selected} history={history} historyLoading={historyLoading} busy={busy} onClose={() => setSelected(null)} onEdit={() => openEdit(selected)} onDuplicate={() => duplicateEntry(selected)} onCancel={() => void cancelEntry(selected)} onDelete={() => void deleteEntry(selected)} onConvertToTask={() => void convertNoteToTask(selected)} />}
   </main>;

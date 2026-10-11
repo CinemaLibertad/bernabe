@@ -84,5 +84,29 @@ service cloud.firestore {
         allow update, delete: if false;
       }
     }
+    match /studios/{studioId}/notifications/{notificationId} {
+      allow read: if authorized(studioId);
+      allow create: if authorized(studioId)
+        && request.resource.data.studioId == studioId
+        && request.resource.data.createdBy == request.auth.token.email
+        && request.resource.data.source.type == 'activity'
+        && request.resource.data.source.id is string
+        && request.resource.data.href is string
+        && existsAfter(/databases/$(database)/documents/studios/$(studioId)/activities/$(request.resource.data.source.id))
+        && getAfter(/databases/$(database)/documents/studios/$(studioId)/activities/$(request.resource.data.source.id)).data.studioId == studioId
+        && request.resource.data.readAt == null;
+      allow update: if authorized(studioId)
+        && resource.data.studioId == studioId
+        && request.resource.data.studioId == studioId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.source == resource.data.source
+        && request.resource.data.title == resource.data.title
+        && request.resource.data.message == resource.data.message
+        && request.resource.data.href == resource.data.href
+        && request.resource.data.readBy == request.auth.token.email
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt', 'readBy', 'archivedAt', 'archivedBy']);
+      allow delete: if false;
+    }
   }
 }

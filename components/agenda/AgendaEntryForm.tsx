@@ -9,6 +9,7 @@ import type { Client } from "../../lib/clients/client.model";
 
 type Props = {
   entry: AgendaEntry | null;
+  initialType: AgendaEntryInput["type"];
   cases: LegalCase[];
   clients: Client[];
   initialDate: Date;
@@ -23,10 +24,10 @@ const titleByType: Record<AgendaEntryInput["type"], string> = {
   recordatorio: "Recordatorio", nota: "Nota", otro: "Otro",
 };
 
-export function AgendaEntryForm({ entry, cases, clients, initialDate, busy, onClose, onSave, onDelete }: Props) {
+export function AgendaEntryForm({ entry, initialType, cases, clients, initialDate, busy, onClose, onSave, onDelete }: Props) {
   const initialStart = localDateTimeValue(entry?.startAt ?? initialDate);
   const initialEnd = entry?.endAt ? localDateTimeValue(entry.endAt) : "";
-  const [type, setType] = useState<AgendaEntryInput["type"]>(entry?.type ?? "audiencia");
+  const [type, setType] = useState<AgendaEntryInput["type"]>(entry?.type ?? initialType);
   const [title, setTitle] = useState(entry?.title ?? "");
   const [description, setDescription] = useState(entry?.description ?? "");
   const [notes, setNotes] = useState(entry?.notes ?? "");

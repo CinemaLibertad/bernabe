@@ -1,5 +1,5 @@
 import {
-  collection, doc, getDoc, getDocs, orderBy, query, runTransaction, serverTimestamp,
+  collection, doc, getDoc, getDocs, limit, orderBy, query, runTransaction, serverTimestamp,
   Timestamp, where,
 } from "firebase/firestore";
 import type { User } from "firebase/auth";
@@ -7,6 +7,8 @@ import { firestore } from "./services";
 import type { Client, ClientInput } from "../clients/client.model";
 import type { LegalCase, LegalCaseInput } from "../cases/case.model";
 import type { Activity, ActivityAudit, ActivityInput, ActivityStatus } from "../activities/activity.model";
+import { createActivityNotification } from "../notifications/notification.repository";
+import type { NotificationKind } from "../notifications/notification.model";
 
 const studio = "estudio-bernabe";
 const clients = collection(firestore, "studios", studio, "clients");
@@ -58,9 +60,20 @@ export async function listActivities(from: Date, to: Date, includeArchived = fal
   return result.docs.map((item) => fromActivity(item.id, item.data() as Record<string, unknown>)).filter((item) => includeArchived || !item.deletedAt);
 }
 
+export async function listTasksAndDeadlines(): Promise<Activity[]> {
+  const result = await getDocs(query(activities, where("type", "in", ["tarea", "vencimiento"]), limit(200)));
+  return result.docs.map((item) => fromActivity(item.id, item.data() as Record<string, unknown>)).filter((item) => !item.deletedAt).sort((left, right) => left.startAt.localeCompare(right.startAt));
+}
+
 export async function listActivityHistory(id: string): Promise<ActivityAudit[]> {
   const result = await getDocs(query(collection(doc(activities, id), "history"), orderBy("at", "desc")));
   return result.docs.map((item) => ({ ...item.data(), at: iso(item.data().at) } as ActivityAudit));
+}
+
+export async function getActivity(id: string): Promise<Activity | null> {
+  const result = await getDoc(doc(activities, id));
+  if (!result.exists() || result.data().studioId !== studio || result.data().deletedAt) return null;
+  return fromActivity(result.id, result.data() as Record<string, unknown>);
 }
 
 export async function saveActivity(input: ActivityInput, user: User, id?: string, reason = ""): Promise<string> {
@@ -81,6 +94,17 @@ export async function saveActivity(input: ActivityInput, user: User, id?: string
     const changedFields = old ? (Object.keys(input) as Array<keyof ActivityInput>).filter((key) => JSON.stringify(old[key]) !== JSON.stringify(input[key])) : [];
     const history = doc(collection(ref, "history"));
     tx.set(history, { action: !old ? "created" : old.startAt !== input.startAt ? "rescheduled" : "updated", actor: actor(user), at: serverTimestamp(), ...(old ? { previousStartAt: old.startAt, nextStartAt: input.startAt, changedFields } : { nextStartAt: input.startAt }), reason });
+    const notificationKind: NotificationKind | null = !old
+      ? "created"
+      : old.startAt !== input.startAt
+        ? "rescheduled"
+        : old.status !== input.status
+          ? "status_changed"
+          : null;
+    if (notificationKind) {
+      const notificationActivity = { ...input, id: ref.id, studioId: studio, createdAt: "", updatedAt: "", createdBy: actor(user), updatedBy: actor(user), deletedAt: null } as Activity;
+      createActivityNotification(tx, notificationActivity, notificationKind, actor(user));
+    }
   });
   return ref.id;
 }
@@ -90,8 +114,10 @@ export async function changeActivityStatus(id: string, status: ActivityStatus, u
   await runTransaction(firestore, async (tx) => {
     const snapshot = await tx.get(ref);
     if (!snapshot.exists() || snapshot.data().studioId !== studio) throw new Error("La actividad ya no existe.");
+    const previous = fromActivity(snapshot.id, snapshot.data() as Record<string, unknown>);
     tx.update(ref, { status, updatedAt: serverTimestamp(), updatedBy: actor(user) });
     tx.set(doc(collection(ref, "history")), { action: status === "cancelado" ? "cancelled" : "updated", actor: actor(user), at: serverTimestamp(), reason });
+    if (previous.status !== status) createActivityNotification(tx, { ...previous, status, updatedBy: actor(user) } as Activity, "status_changed", actor(user));
   });
 }
 

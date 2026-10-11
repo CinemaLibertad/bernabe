@@ -1,0 +1,46 @@
+{
+  "source": {
+    "name": "Consejo de la Magistratura de la Nación — Guía Judicial",
+    "url": "https://consejomagistratura.gov.ar/guiajudicial/",
+    "retrievedAt": "2026-10-11",
+    "sourceHtmlSha256": "a9ea9fa14d963869bbd1bc1834ddccedaa453855a9581f6bac941c66a5cda253"
+  },
+  "counts": {
+    "recordsImported": 1794,
+    "recordsWithAddress": 1794,
+    "recordsWithPhone": 1724,
+    "recordsWithEmail": 1303,
+    "recordsWithCoordinates": 1794,
+    "recordsWithPublicOfficialsLookup": 1446,
+    "recordsWithOfficials": 1383,
+    "recordsWithoutReturnedOfficials": 411,
+    "namedOfficials": 2892,
+    "recordsWithJurisdiction": 1712,
+    "recordsWithLocality": 741,
+    "incompleteRecords": 1794,
+    "sourceSectionsWithIndividualMarkers": 1794
+  },
+  "byJurisdiction": {
+    "Federal": 749,
+    "Misiones": 8,
+    "Nacional": 955
+  },
+  "byOrganizationType": {
+    "court": 522,
+    "judicial_body": 94,
+    "judicial_office": 319,
+    "secretariat": 859
+  },
+  "missingFieldCounts": {
+    "email": 491,
+    "instance": 1794,
+    "jurisdiction": 82,
+    "officials": 411,
+    "phone": 70
+  },
+  "limitations": [
+    "Los nombres y cargos se incorporaron desde el diálogo público Integrantes. En registros sin respuesta, el campo queda vacío.",
+    "La Guía Judicial cubre organismos nacionales y federales publicados allí; no es un catálogo de todos los poderes judiciales provinciales.",
+    "La copia del HTML tiene redactada la clave de Maps que la propia página expone en su etiqueta de script. El SHA-256 corresponde al documento recibido antes de redactarla."
+  ]
+}

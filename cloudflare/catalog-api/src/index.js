@@ -1,4 +1,5 @@
 const API_PREFIX = "/api/v1";
+const CACHE_VERSION = "catalog-2026-10-11-import-1";
 const ALLOWED_ORIGINS = new Set([
   "https://bernabenieto.com.ar",
   "https://www.bernabenieto.com.ar",
@@ -83,12 +84,17 @@ async function listOrganizations(request, db) {
   const clauses = [];
   const values = [];
   if (q) {
-    const ftsQuery = buildFtsQuery(q);
-    if (!ftsQuery) {
-      return json({ data: [], page, pageSize, total: 0, hasMore: false });
+    if (/^\d+$/.test(q)) {
+      clauses.push("o.catalog_number = ?");
+      values.push(q);
+    } else {
+      const ftsQuery = buildFtsQuery(q);
+      if (!ftsQuery) {
+        return json({ data: [], page, pageSize, total: 0, hasMore: false });
+      }
+      clauses.push("o.id IN (SELECT organization_id FROM organization_search WHERE organization_search MATCH ?)");
+      values.push(ftsQuery);
     }
-    clauses.push("o.id IN (SELECT organization_id FROM organization_search WHERE organization_search MATCH ?)");
-    values.push(ftsQuery);
   }
   addFilter(clauses, values, "o.jurisdiction_id", jurisdictionId);
   if (province) { clauses.push("LOWER(o.province_name) = LOWER(?)"); values.push(province); }
@@ -108,6 +114,10 @@ async function listOrganizations(request, db) {
         o.province_name AS provinceName, o.region,
         o.judicial_district AS judicialDistrict, o.locality,
         o.parent_organization_id AS parentOrganizationId, o.status,
+        o.catalog_number AS number, o.source_record_id AS sourceRecordId,
+        o.source_hierarchy_json AS sourceHierarchyJson, o.missing_fields_json AS missingFieldsJson,
+        o.latitude, o.longitude,
+        (SELECT c.value FROM organization_contacts c WHERE c.organization_id = o.id AND c.contact_type = 'address' AND c.is_current = 1 ORDER BY c.id LIMIT 1) AS address,
         o.source_last_verified_at AS sourceLastVerifiedAt
        FROM organizations o LEFT JOIN jurisdictions j ON j.id = o.jurisdiction_id
        ${where} ORDER BY o.official_name COLLATE NOCASE LIMIT ? OFFSET ?`,
@@ -127,6 +137,10 @@ async function getOrganization(id, db) {
       o.province_name AS provinceName, o.region,
       o.judicial_district AS judicialDistrict, o.locality,
       o.parent_organization_id AS parentOrganizationId, p.official_name AS parentOrganizationName,
+      o.catalog_number AS number, o.source_record_id AS sourceRecordId,
+      o.source_hierarchy_json AS sourceHierarchyJson, o.missing_fields_json AS missingFieldsJson,
+      o.latitude, o.longitude,
+      (SELECT c.value FROM organization_contacts c WHERE c.organization_id = o.id AND c.contact_type = 'address' AND c.is_current = 1 ORDER BY c.id LIMIT 1) AS address,
       o.status, o.source_last_verified_at AS sourceLastVerifiedAt,
       o.created_at AS createdAt, o.updated_at AS updatedAt
      FROM organizations o
@@ -156,7 +170,12 @@ async function getOrganization(id, db) {
       FROM change_events WHERE entity_type = 'organization' AND entity_id = ?
       ORDER BY changed_at DESC LIMIT 100`, [id]),
   ]);
-  return json({ data: { ...organization, aliases, contacts, links, authorities, provenance, history } });
+  return json({ data: {
+    ...organization,
+    sourceHierarchy: JSON.parse(organization.sourceHierarchyJson || "[]"),
+    missingFields: JSON.parse(organization.missingFieldsJson || "[]"),
+    aliases, contacts, links, authorities, provenance, history,
+  } });
 }
 
 async function handleApi(request, env) {
@@ -217,7 +236,9 @@ export default {
     }
 
     const cache = caches.default;
-    const cacheKey = new Request(new URL(request.url).toString(), { method: "GET" });
+    const cacheUrl = new URL(request.url);
+    cacheUrl.searchParams.set("_catalogCache", CACHE_VERSION);
+    const cacheKey = new Request(cacheUrl.toString(), { method: "GET" });
     const cached = await cache.match(cacheKey);
     if (cached) return withCors(cached, origin);
 

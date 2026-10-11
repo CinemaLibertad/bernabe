@@ -1,0 +1,20 @@
+[
+  {
+    "id": "federal",
+    "code": "FED",
+    "name": "Federal",
+    "level": "national"
+  },
+  {
+    "id": "misiones",
+    "code": "PROV",
+    "name": "Misiones",
+    "level": "provincial"
+  },
+  {
+    "id": "nacional",
+    "code": "NAC",
+    "name": "Nacional",
+    "level": "national"
+  }
+]

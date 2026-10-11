@@ -23,6 +23,9 @@
 .organization-card { display:flex; gap:11px; min-width:0; padding:15px; border:1px solid var(--line); background:#fff; }
 .organization-card-icon { display:grid; flex:0 0 35px; width:35px; height:35px; place-items:center; border:1px solid #d5e2f0; color:var(--steel); background:#f1f6fc; }
 .organization-card-content { min-width:0; }
+.organization-card-actions { display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; }
+.organization-map-button { margin-top:12px; padding:0; border:0; color:var(--steel); background:transparent; font-size:10px; font-weight:600; text-decoration:underline; cursor:pointer; }
+.organization-map-button:hover { color:var(--blue); }
 .organization-card-tags { display:flex; flex-wrap:wrap; gap:5px; }
 .organization-card-tags span { padding:3px 6px; background:#eef4fb; color:var(--steel); font-size:9px; }
 .organization-card h3 { margin:8px 0 5px; color:var(--navy); font-size:13px; line-height:1.4; }
@@ -53,5 +56,13 @@
 .organization-detail-body h3 { margin:16px 0 8px; color:var(--navy); font-size:12px; }
 .organization-detail-body p { margin:7px 0; color:var(--slate); font-size:11px; line-height:1.55; overflow-wrap:anywhere; }
 .organization-detail-body a { color:var(--steel); text-decoration:underline; }
+.organization-map-modal { display:flex; flex-direction:column; width:min(680px,100%); max-height:min(86vh,850px); overflow:hidden; background:#fff; border:1px solid #9eb7d4; box-shadow:0 20px 60px rgba(7,19,33,.25); }
+.organization-map-modal>header { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; padding:18px 20px; border-bottom:1px solid var(--line); }
+.organization-map-modal>header h2 { margin:4px 0 0; color:var(--navy); font:600 20px 'Playfair Display',serif; }
+.organization-map-modal iframe { display:block; width:100%; height:min(48vh,360px); min-height:240px; border:0; background:#eef4fb; }
+.organization-map-caption { display:grid; grid-template-columns:1fr auto; gap:7px 18px; padding:14px 20px 18px; }
+.organization-map-caption p { grid-column:1/-1; margin:0; color:var(--navy); font-size:12px; }
+.organization-map-caption span { color:var(--slate); font-size:10px; }
+.organization-map-caption a { color:var(--steel); font-size:11px; font-weight:600; }
 @media (max-width:1050px) { .organization-filters { grid-template-columns:repeat(2,minmax(0,1fr)); }.organization-layout { grid-template-columns:1fr; }.organization-sidebar { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (max-width:640px) { .organization-main .domain-heading { align-items:flex-start; flex-direction:column; }.organization-total { text-align:left; }.organization-query-row { flex-wrap:wrap; }.organization-query-row input { flex-basis:70%; }.organization-query-row button { flex:1; }.organization-filters,.organization-sidebar,.organization-cards,.organization-detail-body dl { grid-template-columns:1fr; }.organization-pagination { align-items:flex-start; flex-direction:column; }.organization-detail { max-height:90vh; } }

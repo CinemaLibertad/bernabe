@@ -21,7 +21,15 @@ export type CatalogOrganization = {
   region: string | null;
   judicialDistrict: string | null;
   locality: string | null;
+  number?: string | null;
+  sourceRecordId?: string | null;
+  sourceHierarchy?: string[];
+  missingFields?: string[];
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   parentOrganizationId: string | null;
+  parentOrganizationName?: string | null;
   status: string;
   sourceLastVerifiedAt: string | null;
 };

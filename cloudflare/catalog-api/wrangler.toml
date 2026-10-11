@@ -1,0 +1,9 @@
+name = "catalogo-judicial-api"
+main = "src/index.js"
+compatibility_date = "2026-10-11"
+workers_dev = true
+
+[[d1_databases]]
+binding = "CATALOG_DB"
+database_name = "catalogo-judicial-nacional"
+database_id = "f0091bec-36d6-4e03-8f89-6b371c98a483"

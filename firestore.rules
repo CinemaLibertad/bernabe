@@ -17,6 +17,26 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/studios/$(studioId)/cases/$(caseId)).data.studioId == studioId
         && get(/databases/$(database)/documents/studios/$(studioId)/cases/$(caseId)).data.archivedAt == null;
     }
+    function validCourtWrite(studioId) {
+      return authorized(studioId)
+        && request.resource.data.studioId == studioId
+        && request.resource.data.createdBy == request.auth.token.email
+        && request.resource.data.updatedBy == request.auth.token.email
+        && request.resource.data.operationId is string
+        && request.resource.data.operationId.size() > 0;
+    }
+    function validCourtUpdate(studioId) {
+      return validCourtWrite(studioId)
+        && resource.data.studioId == studioId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdBy == resource.data.createdBy;
+    }
+    function validActuationConsultationLink(studioId) {
+      return request.resource.data.consultationId == null
+        || (existsAfter(/databases/$(database)/documents/studios/$(studioId)/courtConsultations/$(request.resource.data.consultationId))
+          && getAfter(/databases/$(database)/documents/studios/$(studioId)/courtConsultations/$(request.resource.data.consultationId)).data.studioId == studioId
+          && getAfter(/databases/$(database)/documents/studios/$(studioId)/courtConsultations/$(request.resource.data.consultationId)).data.caseId == request.resource.data.caseId);
+    }
     match /studios/{studioId}/clients/{clientId} {
       allow read: if authorized(studioId);
       allow create: if authorized(studioId)
@@ -50,6 +70,14 @@ service cloud.firestore {
         && request.resource.data.clientIds.size() <= 25
         && request.resource.data.clientIds.toSet().size() == request.resource.data.clientIds.size();
       allow delete: if false;
+      match /courtObservationHistory/{observationId} {
+        allow read: if authorized(studioId);
+        allow create: if authorized(studioId)
+          && request.resource.data.actor == request.auth.token.email
+          && request.resource.data.consultationId is string
+          && existsAfter(/databases/$(database)/documents/studios/$(studioId)/courtConsultations/$(request.resource.data.consultationId));
+        allow update, delete: if false;
+      }
     }
     match /studios/{studioId}/activities/{activityId} {
       allow read: if authorized(studioId);
@@ -107,6 +135,70 @@ service cloud.firestore {
         && request.resource.data.readBy == request.auth.token.email
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt', 'readBy', 'archivedAt', 'archivedBy']);
       allow delete: if false;
+    }
+    match /studios/{studioId}/courtRounds/{roundId} {
+      allow read: if authorized(studioId);
+      allow create: if validCourtWrite(studioId) && request.resource.data.operationId == roundId;
+      allow update: if validCourtUpdate(studioId) && request.resource.data.operationId == roundId;
+      allow delete: if false;
+      match /history/{historyId} {
+        allow read: if authorized(studioId);
+        allow create: if authorized(studioId) && request.resource.data.actor == request.auth.token.email && request.resource.data.action in ['created', 'updated'];
+        allow update, delete: if false;
+      }
+    }
+    match /studios/{studioId}/courtVisits/{visitId} {
+      allow read: if authorized(studioId);
+      allow create: if validCourtWrite(studioId)
+        && request.resource.data.operationId == visitId
+        && existsAfter(/databases/$(database)/documents/studios/$(studioId)/courtRounds/$(request.resource.data.roundId))
+        && getAfter(/databases/$(database)/documents/studios/$(studioId)/courtRounds/$(request.resource.data.roundId)).data.studioId == studioId
+        && request.resource.data.organizationId is string
+        && request.resource.data.organizationNameSnapshot is string;
+      allow update: if validCourtUpdate(studioId)
+        && request.resource.data.operationId == visitId
+        && existsAfter(/databases/$(database)/documents/studios/$(studioId)/courtRounds/$(request.resource.data.roundId));
+      allow delete: if false;
+      match /history/{historyId} {
+        allow read: if authorized(studioId);
+        allow create: if authorized(studioId) && request.resource.data.actor == request.auth.token.email && request.resource.data.action in ['created', 'updated'];
+        allow update, delete: if false;
+      }
+    }
+    match /studios/{studioId}/courtConsultations/{consultationId} {
+      allow read: if authorized(studioId);
+      allow create: if validCourtWrite(studioId)
+        && request.resource.data.operationId == consultationId
+        && validCaseLink(studioId, request.resource.data.caseId)
+        && existsAfter(/databases/$(database)/documents/studios/$(studioId)/courtVisits/$(request.resource.data.visitId))
+        && getAfter(/databases/$(database)/documents/studios/$(studioId)/courtVisits/$(request.resource.data.visitId)).data.roundId == request.resource.data.roundId;
+      allow update: if validCourtUpdate(studioId)
+        && request.resource.data.operationId == consultationId
+        && validCaseLink(studioId, request.resource.data.caseId)
+        && existsAfter(/databases/$(database)/documents/studios/$(studioId)/courtVisits/$(request.resource.data.visitId));
+      allow delete: if false;
+      match /history/{historyId} {
+        allow read: if authorized(studioId);
+        allow create: if authorized(studioId) && request.resource.data.actor == request.auth.token.email && request.resource.data.action in ['created', 'updated'];
+        allow update, delete: if false;
+      }
+    }
+    match /studios/{studioId}/courtActuations/{actuationId} {
+      allow read: if authorized(studioId);
+      allow create: if validCourtWrite(studioId)
+        && request.resource.data.operationId == actuationId
+        && validCaseLink(studioId, request.resource.data.caseId)
+        && validActuationConsultationLink(studioId);
+      allow update: if validCourtUpdate(studioId)
+        && request.resource.data.operationId == actuationId
+        && validCaseLink(studioId, request.resource.data.caseId)
+        && validActuationConsultationLink(studioId);
+      allow delete: if false;
+      match /history/{historyId} {
+        allow read: if authorized(studioId);
+        allow create: if authorized(studioId) && request.resource.data.actor == request.auth.token.email && request.resource.data.action in ['created', 'updated'];
+        allow update, delete: if false;
+      }
     }
   }
 }

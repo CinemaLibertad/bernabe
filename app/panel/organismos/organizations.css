@@ -51,18 +51,27 @@
 .organization-detail-body { overflow:auto; padding:20px 22px; }
 .organization-detail-body dl { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:0 0 18px; }
 .organization-detail-body dl>div { padding:10px; border:1px solid var(--line); }
-.organization-detail-body dt { color:var(--slate); font-size:9px; text-transform:uppercase; letter-spacing:.08em; }
-.organization-detail-body dd { margin:5px 0 0; color:var(--navy); font-size:12px; }
-.organization-detail-body h3 { margin:16px 0 8px; color:var(--navy); font-size:12px; }
-.organization-detail-body p { margin:7px 0; color:var(--slate); font-size:11px; line-height:1.55; overflow-wrap:anywhere; }
-.organization-detail-body a { color:var(--steel); text-decoration:underline; }
+.organization-detail-body dt { color:#4b5f75; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; }
+.organization-detail-body dd { margin:5px 0 0; color:var(--navy); font-size:13px; font-weight:500; line-height:1.5; overflow-wrap:anywhere; }
+.organization-detail-body h3 { margin:0 0 9px; color:var(--navy); font-size:14px; font-weight:700; }
+.organization-detail-section { margin-bottom:18px; padding:15px; border:1px solid #c5d4e4; background:#fff; }
+.organization-detail-section p,.organization-technical-details p { margin:7px 0; color:#33465b; font-size:12px; font-weight:500; line-height:1.65; overflow-wrap:anywhere; }
+.organization-detail-section p b,.organization-technical-details p b { color:#172b43; font-weight:700; }
+.organization-detail-body a { color:#274f78; font-weight:600; text-decoration:underline; text-underline-offset:2px; }
+.organization-technical-details { margin-top:4px; border:1px solid #b6c8db; background:#f4f7fb; }
+.organization-technical-details summary { padding:12px 14px; color:#263e58; font-size:12px; font-weight:700; cursor:pointer; }
+.organization-technical-details[open] { padding-bottom:12px; }
+.organization-technical-details[open] summary { margin-bottom:4px; border-bottom:1px solid #d1dce8; }
+.organization-technical-details>section { padding:0 14px; }
+.organization-technical-details>section h3 { margin-top:13px; }
+.organization-detail-section .organization-map-button { margin:0 0 8px; font-size:12px; }
 .organization-map-modal { display:flex; flex-direction:column; width:min(680px,100%); max-height:min(86vh,850px); overflow:hidden; background:#fff; border:1px solid #9eb7d4; box-shadow:0 20px 60px rgba(7,19,33,.25); }
 .organization-map-modal>header { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; padding:18px 20px; border-bottom:1px solid var(--line); }
 .organization-map-modal>header h2 { margin:4px 0 0; color:var(--navy); font:600 20px 'Playfair Display',serif; }
 .organization-map-modal iframe { display:block; width:100%; height:min(48vh,360px); min-height:240px; border:0; background:#eef4fb; }
 .organization-map-caption { display:grid; grid-template-columns:1fr auto; gap:7px 18px; padding:14px 20px 18px; }
 .organization-map-caption p { grid-column:1/-1; margin:0; color:var(--navy); font-size:12px; }
-.organization-map-caption span { color:var(--slate); font-size:10px; }
-.organization-map-caption a { color:var(--steel); font-size:11px; font-weight:600; }
+.organization-map-caption span { color:#42566d; font-size:11px; font-weight:600; }
+.organization-map-caption a { color:#274f78; font-size:12px; font-weight:700; }
 @media (max-width:1050px) { .organization-filters { grid-template-columns:repeat(2,minmax(0,1fr)); }.organization-layout { grid-template-columns:1fr; }.organization-sidebar { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (max-width:640px) { .organization-main .domain-heading { align-items:flex-start; flex-direction:column; }.organization-total { text-align:left; }.organization-query-row { flex-wrap:wrap; }.organization-query-row input { flex-basis:70%; }.organization-query-row button { flex:1; }.organization-filters,.organization-sidebar,.organization-cards,.organization-detail-body dl { grid-template-columns:1fr; }.organization-pagination { align-items:flex-start; flex-direction:column; }.organization-detail { max-height:90vh; } }

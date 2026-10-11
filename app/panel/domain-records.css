@@ -26,6 +26,7 @@
 .domain-main .domain-table { min-width: 620px; }
 .domain-main .domain-table th { position: sticky; top: 0; z-index: 1; }
 .domain-main .agenda-empty-copy { padding: 22px 8px; color: var(--slate); font-size: 12px; }
+.domain-main .case-court-observation { display:block; margin-top:5px; color:#284f78; font-weight:650; }
 @media (max-width: 1100px) {
   .domain-main .domain-grid { grid-template-columns: minmax(310px, .9fr) minmax(0, 1.1fr); }
   .domain-main .domain-form { grid-template-columns: 1fr; }

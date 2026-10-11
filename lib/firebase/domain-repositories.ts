@@ -50,7 +50,7 @@ export async function saveCase(input: LegalCaseInput, user: User, id?: string): 
     const clientRefs = uniqueClientIds.map((clientId) => doc(clients, clientId));
     const linkedClients = await Promise.all(clientRefs.map((clientRef) => tx.get(clientRef)));
     if (linkedClients.some((item) => !item.exists() || item.data().studioId !== studio || item.data().archivedAt)) throw new Error("Uno o más clientes no existen, están archivados o no pertenecen a este estudio.");
-    tx.set(ref, { ...input, clientIds: uniqueClientIds, studioId: studio, createdAt: old?.exists() ? old.data().createdAt : serverTimestamp(), createdBy: old?.exists() ? old.data().createdBy : actor(user), updatedAt: serverTimestamp(), updatedBy: actor(user), archivedAt: null });
+    tx.set(ref, { ...input, ...(old?.exists() && old.data().latestCourtObservation ? { latestCourtObservation: old.data().latestCourtObservation } : {}), clientIds: uniqueClientIds, studioId: studio, createdAt: old?.exists() ? old.data().createdAt : serverTimestamp(), createdBy: old?.exists() ? old.data().createdBy : actor(user), updatedAt: serverTimestamp(), updatedBy: actor(user), archivedAt: null });
   });
   return ref.id;
 }

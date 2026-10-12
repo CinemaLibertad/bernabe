@@ -144,6 +144,53 @@ exports.disconnectOneDrive = onCall({ region: "southamerica-east1", maxInstances
   return { connected: false };
 });
 
+exports.createOneDriveUploadSession = onCall(
+  { region: "southamerica-east1", secrets: [oneDriveClientSecret, oneDriveTokenEncryptionKey], timeoutSeconds: 30, maxInstances: 2 },
+  async (request) => {
+    const uid = requireOneDriveUser(request);
+    const name = typeof request.data?.name === "string" ? request.data.name.trim() : "";
+    const size = request.data?.size;
+    if (!name || name.length > 255 || /[\\/\u0000-\u001f]/.test(name) || !Number.isSafeInteger(size) || size < 0 || size > 250 * 1024 * 1024) {
+      throw new HttpsError("invalid-argument", "El nombre o tamaño del archivo no es válido (máximo 250 MB).");
+    }
+    const integrationRef = adminDb.doc("studios/estudio-bernabe/integrations/onedrive");
+    const integration = (await integrationRef.get()).data();
+    if (!integration || integration.status !== "connected" || integration.connectedBy !== uid || !integration.encryptedRefreshToken) {
+      throw new HttpsError("failed-precondition", "Conectá OneDrive desde Configuración antes de guardar documentos.");
+    }
+    let tokenResponse;
+    try {
+      const response = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: oneDriveClientId,
+          client_secret: oneDriveClientSecret.value(),
+          grant_type: "refresh_token",
+          refresh_token: decryptGoogleDriveToken(integration.encryptedRefreshToken),
+          scope: oneDriveScopes,
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error("token renewal rejected");
+      tokenResponse = await response.json();
+    } catch {
+      throw new HttpsError("failed-precondition", "La autorización de OneDrive venció. Volvé a conectar la cuenta.");
+    }
+    const uploadResponse = await fetch(`https://graph.microsoft.com/v1.0/me/drive/special/approot:/${encodeURIComponent(name)}:/createUploadSession`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tokenResponse.access_token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ item: { "@microsoft.graph.conflictBehavior": "rename", name } }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const uploadUrl = (await uploadResponse.json().catch(() => ({}))).uploadUrl;
+    if (!uploadResponse.ok || typeof uploadUrl !== "string" || !uploadUrl.startsWith("https://")) {
+      throw new HttpsError("unavailable", "Microsoft no pudo iniciar la carga en OneDrive.");
+    }
+    return { uploadUrl };
+  },
+);
+
 function decryptGoogleDriveToken(encrypted) {
   const key = Buffer.from(oneDriveTokenEncryptionKey.value(), "base64");
   if (key.length !== 32) throw new HttpsError("failed-precondition", "La clave de cifrado de integraciones no está configurada correctamente.");

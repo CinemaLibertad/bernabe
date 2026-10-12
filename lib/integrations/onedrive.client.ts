@@ -22,3 +22,11 @@ export async function disconnectOneDrive() {
   const call = httpsCallable<void, { connected: false }>(functions, "disconnectOneDrive");
   return (await call()).data;
 }
+
+export async function uploadOneDriveFile(file: File) {
+  const call = httpsCallable<{ name: string; size: number }, { uploadUrl: string }>(functions, "createOneDriveUploadSession");
+  const { uploadUrl } = (await call({ name: file.name, size: file.size })).data;
+  const response = await fetch(uploadUrl, { method: "PUT", body: file });
+  if (!response.ok) throw new Error("No se pudo guardar el archivo en OneDrive.");
+  return await response.json() as { id: string; name: string; webUrl?: string };
+}

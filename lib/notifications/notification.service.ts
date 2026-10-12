@@ -21,7 +21,9 @@ export function describeActivityNotification(
     : kind === "rescheduled"
       ? `${label} reprogramada: ${activity.title}`
       : `${label}: ${activity.title} · ${activity.status}`;
-  const message = kind === "rescheduled"
+  const message = activity.type === "recordatorio" && kind === "created"
+    ? `${activity.description ? `${activity.description} · ` : ""}Recordatorio programado para ${when}.`
+    : kind === "rescheduled"
     ? `La fecha registrada ahora es ${when}. Abrí la actividad para consultar sus antecedentes.`
     : kind === "status_changed"
       ? `El estado se actualizó a «${activity.status}». La fecha asociada es ${when}.`
@@ -31,6 +33,6 @@ export function describeActivityNotification(
     : activity.priority === "importante" || activity.type === "vencimiento"
       ? "importante"
       : "informativa";
-  const category: NotificationCategory = activity.type === "tarea" ? "tarea" : activity.type === "vencimiento" ? "vencimiento" : "agenda";
+  const category: NotificationCategory = activity.type === "recordatorio" ? "personalizada" : activity.type === "tarea" ? "tarea" : activity.type === "vencimiento" ? "vencimiento" : "agenda";
   return { title, message, severity, href: `/panel/agenda?activityId=${encodeURIComponent(activity.id)}`, category };
 }

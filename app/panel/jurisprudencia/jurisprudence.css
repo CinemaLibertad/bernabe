@@ -105,6 +105,7 @@
 .legal-citation-reference { margin-top:10px; padding-top:8px; border-top:1px solid #d3dfec; color:#3e5873; font:600 10px/1.5 Inter,sans-serif; }
 .legal-editor-content mark { background:#ffeb91; }
 .editor-status { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:9px; padding:10px 13px; border-top:1px solid #dce4ee; color:#4e647c; font-size:9px; }
+.editor-file-status { display:block; margin-top:4px; color:#1f5e3b; font-weight:600; }
 .editor-status>div { display:flex; gap:6px; }
 .editor-status button { padding:7px 9px; border:1px solid #a7bdd5; border-radius:5px; background:#fff; color:#173c61; cursor:pointer; font-size:9px; font-weight:700; }
 .editor-status button:disabled { color:#8294a8; cursor:not-allowed; }

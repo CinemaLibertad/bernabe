@@ -12,6 +12,8 @@ import type { LegalAnnotation, LegalCitationSnapshot, LegalDraft, LegalDraftInpu
 import { getJurisprudenceDetails, searchJurisprudence } from "../../lib/jurisprudence/jurisprudence.client";
 import { listLegalAnnotations, listLegalCitations, listLegalDrafts, listLegalDraftVersions, markLegalCitationVerified, registerLegalDraftVersion, saveLegalAnnotation, saveLegalCitation, saveLegalDraft } from "../../lib/jurisprudence/jurisprudence.repository";
 import { LegalCitationNode } from "./LegalCitationNode";
+import { createGoogleDriveUploadSession, getGoogleDriveStatus } from "../../lib/integrations/google-drive.client";
+import { getOneDriveStatus, uploadOneDriveFile } from "../../lib/integrations/onedrive.client";
 
 type WorkspaceTab = "research" | "library" | "drafts";
 type PaneSize = { research: number; editor: number };
@@ -60,7 +62,11 @@ export function JurisprudenceWorkspace() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [savedAt, setSavedAt] = useState("");
+  const [savedFileAt, setSavedFileAt] = useState("");
   const [conflict, setConflict] = useState(false);
+  const [storageChoices, setStorageChoices] = useState<Array<"google-drive" | "onedrive">>([]);
+  const [storageDialog, setStorageDialog] = useState(false);
+  const [savingFile, setSavingFile] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [sizes, setSizes] = useState<PaneSize>({ research: 1, editor: 1.2 });
   const [maximized, setMaximized] = useState<"research" | "editor" | null>(null);
@@ -257,6 +263,45 @@ export function JurisprudenceWorkspace() {
     catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo registrar la versión."); }
   }
 
+  function createDraftFile() {
+    const title = (draftTitle.trim() || "Escrito jurídico").replace(/[\\/:*?"<>|]/g, "-");
+    const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${title}</title><style>body{font:12pt/1.65 Georgia,serif;color:#17253b;max-width:800px;margin:48px auto;padding:0 32px}h1,h2,h3{line-height:1.25}blockquote{border-left:3px solid #416182;padding:10px 18px;margin:18px 0;background:#f2f6fb}.legal-citation-reference{font-size:9pt;color:#465b72;margin-top:8px}</style></head><body><h1>${title}</h1>${editor?.getHTML() ?? ""}</body></html>`;
+    return new File([html], `${title}.html`, { type: "text/html;charset=utf-8" });
+  }
+
+  function downloadDraft() {
+    const file = createDraftFile();
+    const url = URL.createObjectURL(file);
+    const anchor = document.createElement("a"); anchor.href = url; anchor.download = file.name; anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function beginCloudSave() {
+    if (dirty || saving) { setError("Esperá la confirmación del autoguardado antes de exportar el documento."); return; }
+    setSavingFile(true); setError("");
+    try {
+      const [google, microsoft] = await Promise.all([getGoogleDriveStatus(), getOneDriveStatus()]);
+      const choices: Array<"google-drive" | "onedrive"> = [...(google.connected ? ["google-drive" as const] : []), ...(microsoft.connected ? ["onedrive" as const] : [])];
+      setStorageChoices(choices);
+      if (choices.length === 0) { setStorageDialog(true); return; }
+      if (choices.length === 1) await saveDraftToCloud(choices[0]);
+      else setStorageDialog(true);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo consultar las cuentas de almacenamiento conectadas."); }
+    finally { setSavingFile(false); }
+  }
+
+  async function saveDraftToCloud(provider: "google-drive" | "onedrive") {
+    setSavingFile(true); setError("");
+    try {
+      const file = createDraftFile();
+      if (provider === "google-drive") await createGoogleDriveUploadSession(file);
+      else await uploadOneDriveFile(file);
+      setSavedFileAt(`Archivo guardado en ${provider === "google-drive" ? "Google Drive" : "OneDrive"} · ${new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}`);
+      setStorageDialog(false);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo guardar el archivo en la cuenta elegida."); }
+    finally { setSavingFile(false); }
+  }
+
   async function verifyCitation(citation: LegalCitationSnapshot) {
     const user = getClientAuth().currentUser;
     if (!user || !window.confirm("Confirmá que cotejaste el fragmento y su referencia con el documento de la fuente oficial antes de marcarlo como verificado.")) return;
@@ -337,12 +382,13 @@ export function JurisprudenceWorkspace() {
           <button disabled={!editor} aria-label="Negrita" onClick={() => editor?.chain().focus().toggleBold().run()} className={editor?.isActive("bold") ? "active" : ""}><b>B</b></button><button disabled={!editor} aria-label="Cursiva" onClick={() => editor?.chain().focus().toggleItalic().run()} className={editor?.isActive("italic") ? "active" : ""}><i>I</i></button><button disabled={!editor} aria-label="Subrayado" onClick={() => editor?.chain().focus().toggleUnderline().run()} className={editor?.isActive("underline") ? "active" : ""}><u>U</u></button><button disabled={!editor} aria-label="Resaltar texto" onClick={() => editor?.chain().focus().toggleHighlight().run()} className={editor?.isActive("highlight") ? "active" : ""}>▰</button><span /><button disabled={!editor} onClick={() => editor?.chain().focus().toggleBulletList().run()}>• Lista</button><button disabled={!editor} onClick={() => editor?.chain().focus().toggleBlockquote().run()}>❞ Cita común</button><button disabled={!editor} onClick={() => editor?.chain().focus().undo().run()}>↶</button><button disabled={!editor} onClick={() => editor?.chain().focus().redo().run()}>↷</button>
         </div>
         <div className="editor-scroll"><EditorContent editor={editor} /></div>
-        <footer className="editor-status"><span>{saving ? "Guardando…" : dirty ? "Cambios pendientes de guardar" : savedAt ? `Guardado · ${savedAt}` : activeDraft ? `Borrador recuperado · revisión ${activeDraft.revision}` : "Borrador nuevo · se guardará al comenzar"}</span><div><button disabled={!activeDraft || dirty || saving} onClick={() => void registerVersion()}>Registrar versión</button><button disabled={!activeDraft || dirty || saving} onClick={() => void toggleVersions()}>Historial</button><button disabled={dirty || saving} onClick={() => window.print()}>Imprimir / PDF</button></div></footer>
+        <footer className="editor-status"><span>{saving ? "Guardando borrador…" : dirty ? "Cambios pendientes de guardar" : savedAt ? `Borrador guardado · ${savedAt}` : activeDraft ? `Borrador recuperado · revisión ${activeDraft.revision}` : "Borrador nuevo · se guardará al comenzar"}{savedFileAt && <small className="editor-file-status">{savedFileAt}</small>}</span><div><button disabled={!activeDraft || dirty || saving} onClick={() => void registerVersion()}>Registrar versión</button><button disabled={!activeDraft || dirty || saving} onClick={() => void toggleVersions()}>Historial</button><button disabled={dirty || saving || savingFile} onClick={downloadDraft}>Descargar archivo</button><button disabled={dirty || saving || savingFile} onClick={() => void beginCloudSave()}>{savingFile ? "Guardando archivo…" : "Guardar en nube"}</button><button disabled={dirty || saving} onClick={() => window.print()}>Imprimir / PDF</button></div></footer>
         {versionsOpen && <section className="draft-version-history"><header><b>Versiones registradas</b><button onClick={() => setVersionsOpen(false)}>Cerrar</button></header>{versions.length === 0 ? <p>Todavía no hay versiones registradas.</p> : versions.map((version) => <div key={version.id}><span><b>Revisión {version.revision}</b><small>{version.registeredAt ? new Date(version.registeredAt).toLocaleString("es-AR") : "Fecha no disponible"}</small></span><button disabled={dirty || saving} onClick={() => restoreVersion(version)}>Recuperar como nueva revisión</button></div>)}</section>}
       </section>
     </div>
 
     {error && <div className="jurisprudence-feedback" role="status"><span>{error}</span>{conflict && <button onClick={() => void reloadConflictedDraft()}>Recargar versión del servidor</button>}<button onClick={() => setError("")} aria-label="Cerrar mensaje">×</button></div>}
+    {storageDialog && <div className="agenda-overlay" role="presentation"><section className="agenda-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="draft-storage-title"><header className="agenda-dialog-header"><div><span className="agenda-eyebrow">DOCUMENTO DEL ESTUDIO</span><h2 id="draft-storage-title">Elegí dónde guardar el archivo</h2><p>El borrador editable permanece en el editor; este archivo se guarda en la cuenta que selecciones.</p></div><button type="button" className="agenda-icon-button" onClick={() => setStorageDialog(false)} aria-label="Cerrar">×</button></header><div className="agenda-detail-scroll">{storageChoices.length === 0 ? <><p>Para guardar documentos, primero conectá Google Drive o OneDrive.</p><button className="agenda-button primary" onClick={() => { setStorageDialog(false); window.location.assign("/panel/configuracion"); }}>Configurar almacenamiento</button></> : <div className="storage-provider-choice">{storageChoices.includes("google-drive") && <button className="agenda-button secondary" disabled={savingFile} onClick={() => void saveDraftToCloud("google-drive")}>Guardar en Google Drive</button>}{storageChoices.includes("onedrive") && <button className="agenda-button secondary" disabled={savingFile} onClick={() => void saveDraftToCloud("onedrive")}>Guardar en OneDrive</button>}</div>}</div></section></div>}
     <footer className="jurisprudence-footnote">Las fuentes externas conservan su procedencia. El sistema no calcula plazos ni sustituye la revisión profesional de citas y documentos originales.</footer>
   </main>;
 }

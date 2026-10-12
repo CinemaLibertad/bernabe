@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
+const publicOrigin = "https://bernabenieto.com.ar";
 
 export function GET(request: NextRequest) {
-  const url = new URL("/panel/configuracion", request.url);
+  const url = new URL("/panel/configuracion", publicOrigin);
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");
   const error = request.nextUrl.searchParams.get("error");

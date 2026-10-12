@@ -19,7 +19,7 @@ export default function SettingsPage() {
       <div className="settings-storage-heading" id="almacenamiento">
         <span className="agenda-eyebrow">DOCUMENTOS DEL ESTUDIO</span>
         <h2 id="settings-storage-title">Conectá tu almacenamiento en la nube</h2>
-        <p>Elegí una cuenta propia para guardar documentos y escaneos. El sistema conserva los datos de gestión y las referencias; no almacena los archivos en Firebase Storage.</p>
+        <p>Elegí una cuenta propia para guardar los documentos y escaneos del estudio.</p>
       </div>
       <GoogleDriveStorageCard />
       <OneDriveStorageCard />

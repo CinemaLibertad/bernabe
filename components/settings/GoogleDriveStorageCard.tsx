@@ -77,7 +77,7 @@ export default function GoogleDriveStorageCard() {
       <div>
         <span className="agenda-eyebrow">ALMACENAMIENTO E INTEGRACIONES</span>
         <h2 id="google-drive-title">Google Drive</h2>
-        <p>Conectá tu cuenta para guardar documentos y escaneos directamente en tu propio espacio de Google.</p>
+        <p>Conectá tu cuenta para guardar documentos y escaneos en Google Drive.</p>
       </div>
       <span className={`settings-connection-status ${connection.connected ? "is-connected" : ""}`}>
         {loading ? "Consultando conexión…" : connection.connected ? "Conectado" : "Sin conectar"}
@@ -87,7 +87,7 @@ export default function GoogleDriveStorageCard() {
     <div className="settings-integration-details">
       <div>
         <strong>Permiso acotado</strong>
-        <p>La aplicación solicita el alcance Drive file para los archivos que crea o que se autorizan expresamente; no acceso general a todo tu Drive.</p>
+        <p>La aplicación podrá administrar los archivos del estudio que guardes desde aquí.</p>
       </div>
       <div>
         <strong>Cuenta conectada</strong>
@@ -103,6 +103,6 @@ export default function GoogleDriveStorageCard() {
       </button>}
       {message && <p role="status" aria-live="polite">{message}</p>}
     </div>
-    <p className="settings-integration-note">Los archivos no se guardan en Firebase Storage. Al desconectar, no se eliminan documentos de tu cuenta de Google.</p>
+    <p className="settings-integration-note">Podés quitar la conexión cuando quieras desde esta sección.</p>
   </section>;
 }

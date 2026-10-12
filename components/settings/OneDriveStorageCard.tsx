@@ -77,7 +77,7 @@ export default function OneDriveStorageCard() {
       <div>
         <span className="agenda-eyebrow">ALMACENAMIENTO E INTEGRACIONES</span>
         <h2 id="onedrive-title">Microsoft OneDrive</h2>
-        <p>Conectá tu cuenta Microsoft para guardar documentos del estudio en el espacio privado de esta aplicación.</p>
+        <p>Conectá tu cuenta Microsoft para guardar documentos y escaneos en OneDrive.</p>
       </div>
       <span className={`settings-connection-status ${connection.connected ? "is-connected" : ""}`}>
         {loading ? "Consultando conexión…" : connection.connected ? "Conectado" : "Sin conectar"}
@@ -87,7 +87,7 @@ export default function OneDriveStorageCard() {
     <div className="settings-integration-details">
       <div>
         <strong>Acceso limitado</strong>
-        <p>La aplicación solicita acceso a su carpeta propia en OneDrive, no a todos tus archivos personales.</p>
+        <p>La aplicación podrá administrar los archivos del estudio que guardes desde aquí.</p>
       </div>
       <div>
         <strong>Cuenta conectada</strong>
@@ -103,6 +103,6 @@ export default function OneDriveStorageCard() {
       </button>}
       {message && <p role="status" aria-live="polite">{message}</p>}
     </div>
-    <p className="settings-integration-note">Los documentos no se almacenan en Firebase Storage. Esta conexión prepara OneDrive como destino; el consentimiento puede revocarse desde la configuración de tu cuenta Microsoft.</p>
+    <p className="settings-integration-note">Podés quitar la conexión cuando quieras desde esta sección.</p>
   </section>;
 }

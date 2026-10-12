@@ -1,0 +1,59 @@
+.settings-page-heading { margin-bottom: 18px; padding: 22px 24px; border: 1px solid #9bb8d9; border-radius: 10px; background: #fff; }
+.settings-page-heading h1 { margin: 5px 0; color: #101f35; font: 600 29px 'Playfair Display', serif; }
+.settings-page-heading p { margin: 0; color: #42566f; font-size: 13px; line-height: 1.6; }
+.settings-section-nav { display: flex; gap: 6px; margin: 0 0 18px; padding: 0 0 10px; overflow-x: auto; border-bottom: 1px solid #9bb8d9; }
+.settings-section-nav a { flex: none; padding: 10px 13px; border: 1px solid transparent; border-radius: 7px; color: #42566f; font-size: 12px; font-weight: 600; text-decoration: none; }
+.settings-section-nav a:hover { color: #173a60; background: #f3f7fc; }
+.settings-section-nav a.is-active { border-color: #8eadd0; color: #173a60; background: #edf4fc; }
+.settings-integration-heading,
+.settings-integration-details,
+.settings-integration-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.settings-integration-heading h2 { margin: 7px 0; font: 600 22px 'Playfair Display', serif; }
+.settings-integration-heading p,
+.settings-integration-details p,
+.settings-integration-note,
+.settings-integration-actions [role="status"] { color: #42566f; font-size: 12px; line-height: 1.65; }
+.settings-connection-status { flex: none; padding: 6px 10px; border: 1px solid #9bb5d3; border-radius: 999px; color: #344f6e; font-size: 11px; font-weight: 600; }
+.settings-connection-status.is-connected { border-color: #79a98a; color: #17603a; background: #effaf2; }
+.settings-integration-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 15px 0; padding: 15px; border: 1px solid #b4c8df; border-radius: 9px; background: #f8fafd; }
+.settings-integration-details strong { font-size: 12px; }
+.settings-integration-details p { margin: 6px 0 0; }
+.settings-integration-actions { align-items: center; }
+.settings-integration-actions button { min-height: 38px; padding: 9px 14px; border: 1px solid #284969; border-radius: 6px; color: white; background: #284969; font-weight: 600; cursor: pointer; }
+.settings-integration-actions button.button-secondary { color: #284969; background: white; }
+.settings-integration-actions button:disabled { cursor: wait; opacity: .65; }
+.settings-integration-actions [role="status"] { margin: 0; }
+.settings-integration-note { margin: 12px 0 0; font-size: 11px; }
+
+.settings-storage-section { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; gap: 16px; margin-bottom: 24px; }
+.settings-storage-heading,
+.settings-storage-section > .data-card { border: 1px solid #9bb8d9; border-radius: 10px; background: #fff; }
+.settings-storage-heading { grid-column: 1 / -1; padding: 18px 20px; scroll-margin-top: 90px; }
+.settings-storage-heading h2 { margin: 6px 0; color: #101f35; font: 600 24px 'Playfair Display', serif; }
+.settings-storage-heading p { max-width: 780px; margin: 0; color: #42566f; font-size: 13px; line-height: 1.65; }
+.settings-storage-section > .data-card { min-width: 0; padding: 18px 20px; border-width: 1px; box-shadow: 0 2px 8px rgba(16,31,53,.035); }
+.settings-integration-heading h2 { color: #101f35; }
+.settings-integration-heading p,
+.settings-integration-details p,
+.settings-integration-note,
+.settings-integration-actions [role="status"],
+.settings-preferences-card p { color: #344a63; }
+.settings-integration-details { border-color: #b4c8df; }
+.settings-preferences-card { scroll-margin-top: 90px; border: 1px solid #9bb8d9; border-radius: 10px; }
+.settings-preferences-card h2 { margin: 6px 0; color: #101f35; font: 600 22px 'Playfair Display', serif; }
+.settings-preferences-card p { max-width: 780px; margin: 0; font-size: 13px; line-height: 1.65; }
+
+@media (max-width: 700px) {
+  .settings-storage-section { grid-template-columns: 1fr; }
+  .settings-storage-heading { grid-column: auto; }
+  .settings-page-heading { padding: 18px; }
+  .settings-integration-heading, .settings-integration-actions { align-items: stretch; flex-direction: column; }
+  .settings-integration-details { grid-template-columns: 1fr; }
+  .settings-storage-heading, .settings-storage-section > .data-card { padding: 15px; }
+}

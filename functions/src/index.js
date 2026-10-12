@@ -1,11 +1,373 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
+const { getApps, initializeApp } = require("firebase-admin/app");
+const { FieldValue, getFirestore } = require("firebase-admin/firestore");
+const { createCipheriv, createDecipheriv, createHash, randomBytes } = require("node:crypto");
 
 const juridicaApiKey = defineSecret("JURIDICA_API_KEY");
+const oneDriveClientSecret = defineSecret("ONEDRIVE_CLIENT_SECRET");
+const oneDriveTokenEncryptionKey = defineSecret("ONEDRIVE_TOKEN_ENCRYPTION_KEY");
+const googleDriveOAuthCredentials = defineSecret("GOOGLE_DRIVE_OAUTH_CREDENTIALS");
+const oneDriveClientId = "efd07482-a827-4c12-9b15-3fe543d280c3";
+const oneDriveRedirectUri = "https://bernabenieto.com.ar/api/integrations/onedrive/callback";
+const oneDriveScopes = "openid profile offline_access User.Read Files.ReadWrite.AppFolder";
+const googleDriveRedirectUri = "https://bernabenieto.com.ar/api/integrations/google-drive/callback";
+const googleDriveScopes = "openid email profile https://www.googleapis.com/auth/drive.file";
 const allowedEmail = "sebastiancharpentier@gmail.com";
 const officialHosts = ["saij.gob.ar", "csjn.gov.ar", "scba.gov.ar"];
 const acceptedSearchTypes = new Set(["jurisprudencia", "fallo", "sumario", "legislacion", "ley", "decreto", "doctrina", "dictamen", "todo"]);
 let toolSchemaCache = null;
+
+if (!getApps().length) initializeApp();
+const adminDb = getFirestore();
+
+function requireOneDriveUser(request) {
+  requireAuthorized(request);
+  if (request.auth.token.email !== allowedEmail) {
+    throw new HttpsError("permission-denied", "La cuenta no está autorizada para administrar el almacenamiento.");
+  }
+  return request.auth.uid;
+}
+
+function encryptOneDriveToken(token) {
+  const key = Buffer.from(oneDriveTokenEncryptionKey.value(), "base64");
+  if (key.length !== 32) throw new HttpsError("failed-precondition", "La clave de cifrado de OneDrive no está configurada correctamente.");
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const ciphertext = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
+  return { ciphertext: ciphertext.toString("base64"), iv: iv.toString("base64"), tag: cipher.getAuthTag().toString("base64") };
+}
+
+exports.startOneDriveOAuth = onCall({ region: "southamerica-east1", maxInstances: 2 }, async (request) => {
+  const uid = requireOneDriveUser(request);
+  const state = randomBytes(32).toString("base64url");
+  const codeVerifier = randomBytes(32).toString("base64url");
+  const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url");
+  await adminDb.doc(`studios/estudio-bernabe/oneDriveOAuthStates/${state}`).set({
+    uid, codeVerifier, createdAt: FieldValue.serverTimestamp(), expiresAt: Date.now() + 10 * 60 * 1000,
+  });
+  const authorize = new URL("https://login.microsoftonline.com/common/oauth2/v2.0/authorize");
+  authorize.search = new URLSearchParams({
+    client_id: oneDriveClientId,
+    response_type: "code",
+    redirect_uri: oneDriveRedirectUri,
+    response_mode: "query",
+    scope: oneDriveScopes,
+    state,
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+    prompt: "select_account",
+  }).toString();
+  return { authorizationUrl: authorize.toString() };
+});
+
+exports.completeOneDriveOAuth = onCall(
+  { region: "southamerica-east1", secrets: [oneDriveClientSecret, oneDriveTokenEncryptionKey], timeoutSeconds: 30, maxInstances: 2 },
+  async (request) => {
+    const uid = requireOneDriveUser(request);
+    const code = typeof request.data?.code === "string" ? request.data.code : "";
+    const state = typeof request.data?.state === "string" ? request.data.state : "";
+    if (!code || code.length > 4096 || !/^[A-Za-z0-9_-]{32,128}$/.test(state)) throw new HttpsError("invalid-argument", "La respuesta OAuth no es válida.");
+
+    const stateRef = adminDb.doc(`studios/estudio-bernabe/oneDriveOAuthStates/${state}`);
+    const stateSnapshot = await stateRef.get();
+    const stateData = stateSnapshot.data();
+    if (!stateSnapshot.exists || stateData.uid !== uid || stateData.expiresAt < Date.now()) {
+      if (stateSnapshot.exists) await stateRef.delete();
+      throw new HttpsError("permission-denied", "La autorización venció o no corresponde a esta sesión. Volvé a conectar OneDrive.");
+    }
+
+    let tokenResponse;
+    try {
+      const response = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: oneDriveClientId,
+          client_secret: oneDriveClientSecret.value(),
+          grant_type: "authorization_code",
+          code,
+          code_verifier: stateData.codeVerifier,
+          redirect_uri: oneDriveRedirectUri,
+          scope: oneDriveScopes,
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error("token exchange rejected");
+      tokenResponse = await response.json();
+    } catch {
+      throw new HttpsError("failed-precondition", "Microsoft no pudo completar la conexión. Revisá el permiso y volvé a intentarlo.");
+    }
+
+    if (typeof tokenResponse.refresh_token !== "string" || typeof tokenResponse.access_token !== "string") {
+      throw new HttpsError("failed-precondition", "Microsoft no devolvió credenciales renovables. Volvé a autorizar el acceso solicitado.");
+    }
+
+    let accountLabel = null;
+    try {
+      const profileResponse = await fetch("https://graph.microsoft.com/v1.0/me?$select=displayName,mail,userPrincipalName", {
+        headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (profileResponse.ok) {
+        const profile = await profileResponse.json();
+        accountLabel = profile.mail || profile.userPrincipalName || profile.displayName || null;
+      }
+    } catch { /* The connection remains valid without a display label. */ }
+
+    const encrypted = encryptOneDriveToken(tokenResponse.refresh_token);
+    await adminDb.doc("studios/estudio-bernabe/integrations/onedrive").set({
+      provider: "microsoft-onedrive",
+      accountLabel,
+      encryptedRefreshToken: encrypted,
+      grantedScopes: tokenResponse.scope || oneDriveScopes,
+      connectedBy: uid,
+      connectedAt: FieldValue.serverTimestamp(),
+      status: "connected",
+    });
+    await stateRef.delete();
+    return { connected: true, accountLabel };
+  },
+);
+
+exports.getOneDriveStatus = onCall({ region: "southamerica-east1", maxInstances: 2 }, async (request) => {
+  requireOneDriveUser(request);
+  const snapshot = await adminDb.doc("studios/estudio-bernabe/integrations/onedrive").get();
+  if (!snapshot.exists || snapshot.data().status !== "connected") return { connected: false };
+  const data = snapshot.data();
+  return { connected: true, accountLabel: data.accountLabel || null, connectedAt: data.connectedAt?.toDate?.().toISOString() || null };
+});
+
+exports.disconnectOneDrive = onCall({ region: "southamerica-east1", maxInstances: 2 }, async (request) => {
+  requireOneDriveUser(request);
+  await adminDb.doc("studios/estudio-bernabe/integrations/onedrive").delete();
+  return { connected: false };
+});
+
+function decryptGoogleDriveToken(encrypted) {
+  const key = Buffer.from(oneDriveTokenEncryptionKey.value(), "base64");
+  if (key.length !== 32) throw new HttpsError("failed-precondition", "La clave de cifrado de integraciones no está configurada correctamente.");
+  const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(encrypted.iv, "base64"));
+  decipher.setAuthTag(Buffer.from(encrypted.tag, "base64"));
+  return Buffer.concat([
+    decipher.update(Buffer.from(encrypted.ciphertext, "base64")),
+    decipher.final(),
+  ]).toString("utf8");
+}
+
+function getGoogleDriveOAuthCredentials() {
+  try {
+    const parsed = JSON.parse(googleDriveOAuthCredentials.value());
+    const credentials = parsed.web || parsed.installed;
+    if (typeof credentials?.client_id !== "string" || typeof credentials?.client_secret !== "string") throw new Error("invalid credentials");
+    return credentials;
+  } catch {
+    throw new HttpsError("failed-precondition", "Las credenciales OAuth de Google Drive no están configuradas correctamente.");
+  }
+}
+
+async function getGoogleDriveAccessToken(uid) {
+  const credentials = getGoogleDriveOAuthCredentials();
+  const integrationRef = adminDb.doc("studios/estudio-bernabe/integrations/google-drive");
+  const snapshot = await integrationRef.get();
+  const integration = snapshot.data();
+  if (!snapshot.exists || integration.status !== "connected" || integration.connectedBy !== uid || !integration.encryptedRefreshToken) {
+    throw new HttpsError("failed-precondition", "Conectá Google Drive desde Configuración antes de guardar documentos.");
+  }
+
+  let response;
+  try {
+    response = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: credentials.client_id,
+        client_secret: credentials.client_secret,
+        grant_type: "refresh_token",
+        refresh_token: decryptGoogleDriveToken(integration.encryptedRefreshToken),
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch {
+    throw new HttpsError("unavailable", "No se pudo renovar el acceso a Google Drive.");
+  }
+  if (!response.ok) {
+    if (response.status === 400 || response.status === 401) {
+      await integrationRef.update({ status: "reauthorization-required" });
+      throw new HttpsError("failed-precondition", "La autorización de Google Drive venció. Volvé a conectar la cuenta.");
+    }
+    throw new HttpsError("unavailable", "Google Drive no pudo renovar la autorización.");
+  }
+  const token = await response.json();
+  if (typeof token.access_token !== "string") throw new HttpsError("unavailable", "Google no devolvió un token de acceso válido.");
+  return token.access_token;
+}
+
+exports.startGoogleDriveOAuth = onCall(
+  { region: "southamerica-east1", secrets: [googleDriveOAuthCredentials], maxInstances: 2 },
+  async (request) => {
+    const uid = requireOneDriveUser(request);
+    const credentials = getGoogleDriveOAuthCredentials();
+    const state = randomBytes(32).toString("base64url");
+    const codeVerifier = randomBytes(32).toString("base64url");
+    const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url");
+    await adminDb.doc(`studios/estudio-bernabe/googleDriveOAuthStates/${state}`).set({
+      uid, codeVerifier, createdAt: FieldValue.serverTimestamp(), expiresAt: Date.now() + 10 * 60 * 1000,
+    });
+    const authorize = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+    authorize.search = new URLSearchParams({
+      client_id: credentials.client_id,
+      redirect_uri: googleDriveRedirectUri,
+      response_type: "code",
+      scope: googleDriveScopes,
+      access_type: "offline",
+      include_granted_scopes: "true",
+      prompt: "consent select_account",
+      state,
+      code_challenge: codeChallenge,
+      code_challenge_method: "S256",
+    }).toString();
+    return { authorizationUrl: authorize.toString() };
+  },
+);
+
+exports.completeGoogleDriveOAuth = onCall(
+  { region: "southamerica-east1", secrets: [googleDriveOAuthCredentials, oneDriveTokenEncryptionKey], timeoutSeconds: 30, maxInstances: 2 },
+  async (request) => {
+    const uid = requireOneDriveUser(request);
+    const credentials = getGoogleDriveOAuthCredentials();
+    const code = typeof request.data?.code === "string" ? request.data.code : "";
+    const state = typeof request.data?.state === "string" ? request.data.state : "";
+    if (!code || code.length > 4096 || !/^[A-Za-z0-9_-]{32,128}$/.test(state)) throw new HttpsError("invalid-argument", "La respuesta OAuth de Google no es válida.");
+
+    const stateRef = adminDb.doc(`studios/estudio-bernabe/googleDriveOAuthStates/${state}`);
+    const stateSnapshot = await stateRef.get();
+    const stateData = stateSnapshot.data();
+    if (!stateSnapshot.exists || stateData.uid !== uid || stateData.expiresAt < Date.now()) {
+      if (stateSnapshot.exists) await stateRef.delete();
+      throw new HttpsError("permission-denied", "La autorización venció o no corresponde a esta sesión. Volvé a conectar Google Drive.");
+    }
+
+    let tokenResponse;
+    try {
+      const response = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: credentials.client_id,
+          client_secret: credentials.client_secret,
+          grant_type: "authorization_code",
+          code,
+          code_verifier: stateData.codeVerifier,
+          redirect_uri: googleDriveRedirectUri,
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error("token exchange rejected");
+      tokenResponse = await response.json();
+    } catch {
+      throw new HttpsError("failed-precondition", "Google no pudo completar la conexión. Revisá la configuración OAuth y volvé a intentarlo.");
+    }
+    if (typeof tokenResponse.refresh_token !== "string" || typeof tokenResponse.access_token !== "string") {
+      throw new HttpsError("failed-precondition", "Google no devolvió credenciales renovables. Volvé a autorizar el acceso solicitado.");
+    }
+
+    let profile;
+    try {
+      const profileResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+        headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!profileResponse.ok) throw new Error("profile unavailable");
+      profile = await profileResponse.json();
+    } catch {
+      throw new HttpsError("unavailable", "No se pudo confirmar la cuenta de Google autorizada.");
+    }
+
+    const existingRootResponse = await fetch("https://www.googleapis.com/drive/v3/files?q=mimeType%3D'application%2Fvnd.google-apps.folder'%20and%20appProperties%20has%20%7B%20key%3D'bernabeStudioFolder'%20and%20value%3D'root'%20%7D%20and%20trashed%3Dfalse&fields=files(id,name)&pageSize=1", {
+      headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!existingRootResponse.ok) throw new HttpsError("unavailable", "No se pudo consultar la carpeta del estudio en Google Drive.");
+    const existingRoots = await existingRootResponse.json();
+    let rootFolder = existingRoots.files?.[0];
+    if (!rootFolder) {
+      const rootResponse = await fetch("https://www.googleapis.com/drive/v3/files?fields=id,name,mimeType", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tokenResponse.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Estudio Jurídico", mimeType: "application/vnd.google-apps.folder", appProperties: { bernabeStudioFolder: "root" } }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!rootResponse.ok) throw new HttpsError("unavailable", "No se pudo preparar la carpeta de documentos en Google Drive.");
+      rootFolder = await rootResponse.json();
+    }
+    const encrypted = encryptOneDriveToken(tokenResponse.refresh_token);
+    await adminDb.doc("studios/estudio-bernabe/integrations/google-drive").set({
+      provider: "google-drive",
+      accountLabel: typeof profile.email === "string" ? profile.email : null,
+      rootFolderId: rootFolder.id,
+      encryptedRefreshToken: encrypted,
+      grantedScopes: tokenResponse.scope || googleDriveScopes,
+      connectedBy: uid,
+      connectedAt: FieldValue.serverTimestamp(),
+      status: "connected",
+    });
+    await stateRef.delete();
+    return { connected: true, accountLabel: typeof profile.email === "string" ? profile.email : null };
+  },
+);
+
+exports.getGoogleDriveStatus = onCall({ region: "southamerica-east1", maxInstances: 2 }, async (request) => {
+  requireOneDriveUser(request);
+  const snapshot = await adminDb.doc("studios/estudio-bernabe/integrations/google-drive").get();
+  if (!snapshot.exists || snapshot.data().status !== "connected") return { connected: false };
+  const data = snapshot.data();
+  return { connected: true, accountLabel: data.accountLabel || null, connectedAt: data.connectedAt?.toDate?.().toISOString() || null };
+});
+
+exports.disconnectGoogleDrive = onCall({ region: "southamerica-east1", maxInstances: 2 }, async (request) => {
+  requireOneDriveUser(request);
+  await adminDb.doc("studios/estudio-bernabe/integrations/google-drive").delete();
+  return { connected: false };
+});
+
+exports.createGoogleDriveUploadSession = onCall(
+  { region: "southamerica-east1", secrets: [googleDriveOAuthCredentials, oneDriveTokenEncryptionKey], timeoutSeconds: 30, maxInstances: 2 },
+  async (request) => {
+    const uid = requireOneDriveUser(request);
+    const credentials = getGoogleDriveOAuthCredentials();
+    const name = typeof request.data?.name === "string" ? request.data.name.trim() : "";
+    const mimeType = typeof request.data?.mimeType === "string" ? request.data.mimeType.trim() : "";
+    const size = request.data?.size;
+    if (!name || name.length > 255 || /[\\/\u0000-\u001f]/.test(name) || !mimeType || mimeType.length > 200 || !Number.isSafeInteger(size) || size < 0 || size > 5 * 1024 * 1024 * 1024 * 1024) {
+      throw new HttpsError("invalid-argument", "El nombre, tipo o tamaño del archivo no es válido.");
+    }
+    const integration = (await adminDb.doc("studios/estudio-bernabe/integrations/google-drive").get()).data();
+    if (!integration?.rootFolderId) throw new HttpsError("failed-precondition", "Conectá Google Drive antes de guardar documentos.");
+    const accessToken = await getGoogleDriveAccessToken(uid);
+    let response;
+    try {
+      response = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,mimeType,size,webViewLink", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json; charset=UTF-8",
+          "X-Upload-Content-Type": mimeType,
+          "X-Upload-Content-Length": String(size),
+        },
+        body: JSON.stringify({ name, mimeType, parents: [integration.rootFolderId] }),
+        signal: AbortSignal.timeout(15000),
+      });
+    } catch {
+      throw new HttpsError("unavailable", "No se pudo iniciar la carga en Google Drive.");
+    }
+    const uploadUrl = response.headers.get("Location");
+    if (!response.ok || !uploadUrl || !uploadUrl.startsWith("https://www.googleapis.com/upload/drive/")) {
+      throw new HttpsError("unavailable", "Google Drive no devolvió una sesión de carga válida.");
+    }
+    return { uploadUrl };
+  },
+);
 
 function optionalString(...values) {
   for (const value of values) {

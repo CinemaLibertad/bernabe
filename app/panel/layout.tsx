@@ -7,6 +7,7 @@ import "./organismos/organizations.css";
 import "./domain-records.css";
 import "./visual-system.css";
 import "./actividad-tribunales/court-activity.css";
+import "./configuracion/settings.css";
 
 export default function PanelLayout({ children }: { children: React.ReactNode }) {
   return <AuthGate><PanelShell>{children}</PanelShell></AuthGate>;

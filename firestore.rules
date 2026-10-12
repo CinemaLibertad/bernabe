@@ -286,5 +286,14 @@ service cloud.firestore {
         && request.resource.data.note is string;
       allow update, delete: if false;
     }
+    match /studios/{studioId}/integrations/{integrationId} {
+      allow read, write: if false;
+    }
+    match /studios/{studioId}/oneDriveOAuthStates/{stateId} {
+      allow read, write: if false;
+    }
+    match /studios/{studioId}/googleDriveOAuthStates/{stateId} {
+      allow read, write: if false;
+    }
   }
 }
